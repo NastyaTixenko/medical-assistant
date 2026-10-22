@@ -20,7 +20,7 @@ const auth = getAuth(app);
 // ТВОЙ КЛЮЧ ОТ OPENROUTER
 const OPENROUTER_API_KEY = "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"; 
 
-// --- Firebase Auth Логика ---
+// --- ЛОГИКА АВТОРИЗАЦИИ FIREBASE ---
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const loginBtn = document.getElementById('login-btn');
@@ -57,7 +57,7 @@ onAuthStateChanged(auth, (user) => {
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// --- Логика ИИ Чата ---
+// --- ЛОГИКА ИИ ЧАТА ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -65,20 +65,18 @@ const chatInput = document.getElementById('chat-input');
 const sendMsgBtn = document.getElementById('send-msg-btn');
 const chatMessages = document.getElementById('chat-messages');
 
-// Открытие/закрытие чата
 chatToggleBtn.addEventListener('click', () => chatWindow.classList.remove('hidden'));
 closeChatBtn.addEventListener('click', () => chatWindow.classList.add('hidden'));
 
-// Функция добавления сообщения на экран
 function addMessage(text, sender) {
     const msgDiv = document.createElement('div');
     msgDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
     msgDiv.textContent = text;
     chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight; // Скролл вниз
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Отправка сообщения в ИИ
+// Отправка сообщения с умным переключением моделей при ошибке 429
 sendMsgBtn.addEventListener('click', async () => {
     const text = chatInput.value.trim();
     if (!text) return;
@@ -86,34 +84,61 @@ sendMsgBtn.addEventListener('click', async () => {
     addMessage(text, 'user');
     chatInput.value = '';
 
-    try {
-        // Отправляем запрос в OpenRouter (используем бесплатную модель Llama 3)
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "google/gemma-4-26b-a4b-it:free", // Актуальная бесплатная модель // Бесплатная модель
-                messages: [
-                    { role: "system", content: "Ты — вежливый виртуальный медицинский ассистент. Ты помогаешь пользователям разобраться в симптомах и подсказываешь, к какому врачу обратиться. Обязательно напоминай, что твои советы не заменяют консультацию реального врача." },
-                    { role: "user", content: text }
-                ]
-            })
-        });
+    // Список резервных бесплатных моделей
+    const freeModels = [
+        "google/gemma-2-9b-it:free",
+        "meta-llama/llama-3-8b-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+        "openrouter/free" // Универсальный роутер
+    ];
 
-        const data = await response.json();
-        
-        if (data.choices && data.choices.length > 0) {
-            const aiReply = data.choices[0].message.content;
-            addMessage(aiReply, 'bot');
-        } else {
-            addMessage("Извините, произошла ошибка при получении ответа. Попробуйте позже.", 'bot');
+    let success = false;
+
+    for (const model of freeModels) {
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        { role: "system", content: "Ты — вежливый виртуальный медицинский ассистент. Ты помогаешь пользователям разобраться в симптомах и подсказываешь, к какому врачу обратиться. Обязательно напоминай, что твои советы не заменяют консультацию реального врача." },
+                        { role: "user", content: text }
+                    ]
+                })
+            });
+
+            // Если ответ успешный
+            if (response.ok) {
+                const data = await response.json();
+                if (data.choices && data.choices.length > 0) {
+                    const aiReply = data.choices[0].message.content;
+                    addMessage(aiReply, 'bot');
+                    success = true;
+                    break; // Выходим из цикла, так как получили ответ
+                }
+            } 
+            // Если ошибка 429 (лимит) - идем к следующей модели
+            else if (response.status === 429) {
+                console.warn(`Модель ${model} перегружена (429). Пробуем следующую...`);
+                continue; 
+            }
+            else {
+                console.warn(`Ошибка ${response.status} для модели ${model}. Пробуем следующую...`);
+                continue;
+            }
+        } catch (error) {
+            console.error(`Ошибка сети для модели ${model}:`, error);
+            continue;
         }
-    } catch (error) {
-        console.error(error);
-        addMessage("Ошибка сети. Проверьте подключение к интернету.", 'bot');
+    }
+
+    // Если все модели выдали ошибку
+    if (!success) {
+        addMessage("Извините, все бесплатные модели сейчас перегружены. Пожалуйста, подождите минуту и попробуйте снова.", 'bot');
     }
 });
 
