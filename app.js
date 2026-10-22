@@ -1,7 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-// Добавили setDoc и getDoc для работы с профилем
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+// Импорт для работы с фото
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBp8WY8Q63pXT4tpb5_gUJCK54wbU4SnbQ",
@@ -16,195 +17,307 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const OPENROUTER_API_KEY = "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"; 
 
-// --- ЭЛЕМЕНТЫ СТРАНИЦЫ ---
-const authSection = document.getElementById('auth-section');
-const appSection = document.getElementById('app-section');
-const emailInput = document.getElementById('email');
-const passwordInput = document.getElementById('password');
-const loginBtn = document.getElementById('login-btn');
-const signupBtn = document.getElementById('signup-btn');
-const logoutBtn = document.getElementById('logout-btn');
-const authMessage = document.getElementById('auth-message');
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+let currentPatients = [];
+let patientToDeleteId = null;
 
-// Элементы профиля
-const dFullname = document.getElementById('d-fullname');
-const dPhone = document.getElementById('d-phone');
-const dExperience = document.getElementById('d-experience');
-const saveProfileBtn = document.getElementById('save-profile-btn');
-const profileStatus = document.getElementById('profile-status');
-const profileNameDisplay = document.getElementById('profile-name-display');
-const regDateSpan = document.getElementById('reg-date');
+// --- УТИЛИТЫ (Уведомления и Модалки) ---
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
 
-// Элементы пациентов
-const patientsList = document.getElementById('patients-list');
-const pNameInput = document.getElementById('p-name');
-const pSnilsInput = document.getElementById('p-snils');
-const pDobInput = document.getElementById('p-dob');
-const pSymptomsInput = document.getElementById('p-symptoms');
-const addPatientBtn = document.getElementById('add-patient-btn');
-
-// --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ---
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        // Убираем активный класс у всех кнопок и вкладок
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active-content'));
-        
-        // Добавляем активный класс нажаттой кнопке и нужной вкладке
-        btn.classList.add('active');
-        const targetTab = document.getElementById(btn.getAttribute('data-target'));
-        targetTab.classList.add('active-content');
-    });
-});
+function showConfirm(text, onConfirm) {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('confirm-text').textContent = text;
+    modal.classList.add('active');
+    
+    const yesBtn = document.getElementById('confirm-yes');
+    const noBtn = document.getElementById('confirm-no');
+    
+    const close = () => modal.classList.remove('active');
+    
+    yesBtn.onclick = () => { onConfirm(); close(); };
+    noBtn.onclick = close;
+}
 
 // --- АВТОРИЗАЦИЯ ---
-signupBtn.addEventListener('click', () => {
-    createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
-        .then(() => { authMessage.textContent = "Регистрация успешна!"; authMessage.style.color = "green"; })
-        .catch((error) => { authMessage.textContent = "Ошибка: " + error.message; authMessage.style.color = "red"; });
+const authSection = document.getElementById('auth-section');
+const appSection = document.getElementById('app-section');
+
+document.getElementById('login-btn').addEventListener('click', () => {
+    signInWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value)
+        .catch(e => document.getElementById('auth-message').textContent = "Ошибка: " + e.message);
 });
 
-loginBtn.addEventListener('click', () => {
-    signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
-        .then(() => { authMessage.textContent = ""; })
-        .catch((error) => { authMessage.textContent = "Ошибка: " + error.message; authMessage.style.color = "red"; });
+document.getElementById('signup-btn').addEventListener('click', () => {
+    createUserWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value)
+        .catch(e => document.getElementById('auth-message').textContent = "Ошибка: " + e.message);
 });
+
+document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
         authSection.style.display = 'none';
-        appSection.style.display = 'block';
-        emailInput.value = ""; passwordInput.value = "";
-        
+        appSection.style.display = 'flex';
+        loadProfile(user.uid);
         loadPatients(user.uid);
-        loadDoctorProfile(user.uid);
+        loadSchedule(user.uid);
     } else {
-        authSection.style.display = 'block';
+        authSection.style.display = 'flex';
         appSection.style.display = 'none';
     }
 });
 
-logoutBtn.addEventListener('click', () => signOut(auth));
+// --- НАВИГАЦИЯ (Вкладки) ---
+document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.add('active-view');
+    });
+});
 
-// --- ЛОГИКА ПРОФИЛЯ ---
-async function loadDoctorProfile(userId) {
-    const docRef = doc(db, "doctors", userId);
-    const docSnap = await getDoc(docRef);
-
+// --- ПРОФИЛЬ ---
+async function loadProfile(userId) {
+    const docSnap = await getDoc(doc(db, "doctors", userId));
     if (docSnap.exists()) {
-        const data = docSnap.data();
-        dFullname.value = data.fullName || "";
-        dPhone.value = data.phone || "";
-        dExperience.value = data.experience || "";
-        regDateSpan.textContent = data.registrationDate || "Неизвестно";
-        
-        // Отображаем ФИО в заголовке профиля
-        profileNameDisplay.textContent = data.fullName || "Врач (ФИО не указано)";
+        const d = docSnap.data();
+        document.getElementById('d-fullname').value = d.fullName || "";
+        document.getElementById('d-phone').value = d.phone || "";
+        document.getElementById('d-experience').value = d.experience || "";
+        document.getElementById('reg-date').textContent = d.registrationDate || "Неизвестно";
+        if (d.photoURL) document.getElementById('profile-avatar-img').src = d.photoURL;
     } else {
-        // Если профиль создается впервые
         const today = new Date().toLocaleDateString('ru-RU');
-        regDateSpan.textContent = today;
-        profileNameDisplay.textContent = "Врач (ФИО не указано)";
-        
-        // Создаем пустую запись в базе, чтобы сохранить дату регистрации
-        await setDoc(docRef, {
-            registrationDate: today,
-            fullName: "",
-            phone: "",
-            experience: ""
-        });
+        document.getElementById('reg-date').textContent = today;
+        await setDoc(doc(db, "doctors", userId), { registrationDate: today, fullName: "", phone: "", experience: "" });
     }
 }
 
-saveProfileBtn.addEventListener('click', async () => {
+document.getElementById('save-profile-btn').addEventListener('click', async () => {
     const user = auth.currentUser;
-    if (!user) return;
-
-    saveProfileBtn.textContent = "Сохранение...";
-    saveProfileBtn.disabled = true;
-
-    try {
-        // setDoc с merge: true обновляет только переданные поля, не стирая остальные
-        await setDoc(doc(db, "doctors", user.uid), {
-            fullName: dFullname.value,
-            phone: dPhone.value,
-            experience: dExperience.value
-        }, { merge: true });
-
-        profileNameDisplay.textContent = dFullname.value || "Врач (ФИО не указано)";
-        
-        profileStatus.textContent = "✅ Данные успешно сохранены!";
-        setTimeout(() => { profileStatus.textContent = ""; }, 3000);
-    } catch (error) {
-        console.error(error);
-        profileStatus.textContent = "❌ Ошибка сохранения";
-        profileStatus.style.color = "red";
-    } finally {
-        saveProfileBtn.textContent = "💾 Сохранить изменения";
-        saveProfileBtn.disabled = false;
-    }
+    await setDoc(doc(db, "doctors", user.uid), {
+        fullName: document.getElementById('d-fullname').value,
+        phone: document.getElementById('d-phone').value,
+        experience: document.getElementById('d-experience').value
+    }, { merge: true });
+    showToast("Профиль успешно обновлен");
 });
 
-
-// --- РАБОТА С ПАЦИЕНТАМИ ---
-async function loadPatients(doctorId) {
-    patientsList.innerHTML = '';
-    const patientsRef = collection(db, "doctors", doctorId, "patients");
-    const querySnapshot = await getDocs(patientsRef);
+// Загрузка фото
+document.getElementById('avatar-upload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const user = auth.currentUser;
     
-    querySnapshot.forEach((docSnap) => {
-        const p = docSnap.data();
-        addPatientToTable(docSnap.id, p.name, p.snils, p.dob, p.symptoms);
-    });
-}
-
-function addPatientToTable(id, name, snils, dob, symptoms) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-        <td>${name}</td>
-        <td>${snils || '-'}</td>
-        <td>${dob || '-'}</td>
-        <td>${symptoms}</td>
-        <td><button class="delete-btn" data-id="${id}">Удалить</button></td>
-    `;
-    patientsList.appendChild(tr);
-
-    tr.querySelector('.delete-btn').addEventListener('click', async (e) => {
-        const patientId = e.target.getAttribute('data-id');
-        await deletePatient(id, patientId);
-    });
-}
-
-addPatientBtn.addEventListener('click', async () => {
-    const user = auth.currentUser;
-    const name = pNameInput.value.trim();
-    const snils = pSnilsInput.value.trim();
-    const dob = pDobInput.value;
-    const symptoms = pSymptomsInput.value.trim();
-
-    if (!name || !symptoms) {
-        alert("Заполните хотя бы ФИО и жалобы!"); return;
-    }
-
-    try {
-        const patientsRef = collection(db, "doctors", user.uid, "patients");
-        await addDoc(patientsRef, { name, snils, dob, symptoms });
-        pNameInput.value = ''; pSnilsInput.value = ''; pDobInput.value = ''; pSymptomsInput.value = '';
-        loadPatients(user.uid);
-    } catch (error) { console.error(error); }
+    const storageRef = ref(storage, `avatars/${user.uid}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+    
+    await setDoc(doc(db, "doctors", user.uid), { photoURL: url }, { merge: true });
+    document.getElementById('profile-avatar-img').src = url;
+    showToast("Фото загружено");
 });
 
-async function deletePatient(doctorId, patientId) {
-    if(!confirm("Удалить пациента из базы?")) return;
-    try {
-        await deleteDoc(doc(db, "doctors", doctorId, "patients", patientId));
-        loadPatients(doctorId); 
-    } catch (error) { console.error(error); }
+// --- ПАЦИЕНТЫ ---
+async function loadPatients(doctorId) {
+    currentPatients = [];
+    const snap = await getDocs(collection(db, "doctors", doctorId, "patients"));
+    snap.forEach(d => currentPatients.push({ id: d.id, ...d.data() }));
+    renderPatientsTable();
+    updatePatientSelect();
 }
 
-// --- ИИ ЧАТ (Код остается прежним) ---
+function renderPatientsTable(filterText = '') {
+    const tbody = document.getElementById('patients-list');
+    tbody.innerHTML = '';
+    
+    const filtered = currentPatients.filter(p => 
+        p.name.toLowerCase().includes(filterText.toLowerCase()) || 
+        (p.snils && p.snils.includes(filterText))
+    );
+
+    filtered.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${p.name}</td>
+            <td>${p.snils || '-'}</td>
+            <td>${p.dob || '-'}</td>
+            <td>${p.symptoms}</td>
+            <td>
+                <span class="action-link" onclick="openPatientModal('${p.id}')">Карта</span>
+                <span class="action-link danger" onclick="promptDeletePatient('${p.id}')">Удалить</span>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Поиск
+document.getElementById('search-patient').addEventListener('input', (e) => {
+    renderPatientsTable(e.target.value);
+});
+
+document.getElementById('add-patient-btn').addEventListener('click', async () => {
+    const user = auth.currentUser;
+    const name = document.getElementById('p-name').value;
+    const snils = document.getElementById('p-snils').value;
+    const dob = document.getElementById('p-dob').value;
+    const symptoms = document.getElementById('p-symptoms').value;
+
+    if (!name || !symptoms) return showToast("Заполните ФИО и жалобы", "error");
+
+    await addDoc(collection(db, "doctors", user.uid, "patients"), { name, snils, dob, symptoms });
+    document.getElementById('p-name').value = ''; document.getElementById('p-snils').value = ''; document.getElementById('p-symptoms').value = '';
+    loadPatients(user.uid);
+    showToast("Пациент добавлен");
+});
+
+// Экспорт в CSV
+document.getElementById('export-csv-btn').addEventListener('click', () => {
+    if (currentPatients.length === 0) return showToast("Нет данных для экспорта", "error");
+    
+    let csv = "ФИО;СНИЛС;Дата рождения;Жалобы\n";
+    currentPatients.forEach(p => {
+        csv += `"${p.name}";"${p.snils || ''}";"${p.dob || ''}";"${p.symptoms}"\n`;
+    });
+    
+    const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "patients_export.csv";
+    link.click();
+});
+
+// Удаление
+window.promptDeletePatient = (id) => {
+    showConfirm("Вы действительно хотите удалить пациента из базы?", async () => {
+        await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "patients", id));
+        loadPatients(auth.currentUser.uid);
+        showToast("Пациент удален");
+    });
+};
+
+// --- РАСПИСАНИЕ ---
+function updatePatientSelect() {
+    const select = document.getElementById('s-patient');
+    select.innerHTML = '<option value="">Выберите пациента</option>';
+    currentPatients.forEach(p => {
+        select.innerHTML += `<option value="${p.id}" data-name="${p.name}">${p.name}</option>`;
+    });
+}
+
+document.getElementById('add-schedule-btn').addEventListener('click', async () => {
+    const user = auth.currentUser;
+    const select = document.getElementById('s-patient');
+    const patientId = select.value;
+    const patientName = select.options[select.selectedIndex]?.dataset.name;
+    const date = document.getElementById('s-date').value;
+    const time = document.getElementById('s-time').value;
+    const reason = document.getElementById('s-reason').value;
+
+    if (!patientId || !date || !time) return showToast("Заполните все поля", "error");
+
+    await addDoc(collection(db, "doctors", user.uid, "schedule"), { patientId, patientName, date, time, reason });
+    document.getElementById('s-reason').value = '';
+    loadSchedule(user.uid);
+    showToast("Прием назначен");
+});
+
+async function loadSchedule(doctorId) {
+    const tbody = document.getElementById('schedule-list');
+    tbody.innerHTML = '';
+    const snap = await getDocs(collection(db, "doctors", doctorId, "schedule"));
+    
+    // Сортировка по дате и времени
+    let schedule = [];
+    snap.forEach(d => schedule.push({ id: d.id, ...d.data() }));
+    schedule.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+    schedule.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${s.date}</td>
+            <td>${s.time}</td>
+            <td>${s.patientName}</td>
+            <td>${s.reason || '-'}</td>
+            <td><span class="action-link danger" onclick="deleteSchedule('${s.id}')">Отменить</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+window.deleteSchedule = (id) => {
+    showConfirm("Отменить этот прием?", async () => {
+        await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "schedule", id));
+        loadSchedule(auth.currentUser.uid);
+        showToast("Прием отменен");
+    });
+};
+
+// --- МОДАЛКА ПАЦИЕНТА И ИИ ---
+let currentModalPatientId = null;
+
+window.openPatientModal = (id) => {
+    const p = currentPatients.find(x => x.id === id);
+    if (!p) return;
+    
+    currentModalPatientId = id;
+    document.getElementById('modal-patient-name').textContent = p.name;
+    document.getElementById('modal-patient-snils').textContent = p.snils || '-';
+    document.getElementById('modal-patient-dob').textContent = p.dob || '-';
+    document.getElementById('modal-patient-symptoms').textContent = p.symptoms;
+    document.getElementById('ai-prescription-text').value = p.prescription || '';
+    
+    document.getElementById('patient-modal').classList.add('active');
+};
+
+document.querySelectorAll('.close-modal-btn').forEach(btn => {
+    btn.onclick = () => document.getElementById('patient-modal').classList.remove('active');
+});
+
+document.getElementById('generate-prescription-btn').addEventListener('click', async () => {
+    const p = currentPatients.find(x => x.id === currentModalPatientId);
+    const btn = document.getElementById('generate-prescription-btn');
+    btn.textContent = "Генерация...";
+    
+    const prompt = `Ты врач. Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения и рекомендации.`;
+    
+    try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "google/gemma-2-9b-it:free", messages: [{ role: "user", content: prompt }] })
+        });
+        const data = await res.json();
+        document.getElementById('ai-prescription-text').value = data.choices[0].message.content;
+    } catch (e) {
+        showToast("Ошибка генерации ИИ", "error");
+    }
+    btn.textContent = "Сгенерировать через ИИ";
+});
+
+document.getElementById('save-prescription-btn').addEventListener('click', async () => {
+    const text = document.getElementById('ai-prescription-text').value;
+    await updateDoc(doc(db, "doctors", auth.currentUser.uid, "patients", currentModalPatientId), {
+        prescription: text
+    });
+    showToast("Назначение сохранено в карту");
+    document.getElementById('patient-modal').classList.remove('active');
+    loadPatients(auth.currentUser.uid);
+});
+
+// --- ЧАТ-АССИСТЕНТ ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -212,77 +325,47 @@ const chatInput = document.getElementById('chat-input');
 const sendMsgBtn = document.getElementById('send-msg-btn');
 const chatMessages = document.getElementById('chat-messages');
 
-chatToggleBtn.addEventListener('click', () => chatWindow.classList.remove('hidden'));
-closeChatBtn.addEventListener('click', () => chatWindow.classList.add('hidden'));
+chatToggleBtn.onclick = () => chatWindow.classList.remove('hidden');
+closeChatBtn.onclick = () => chatWindow.classList.add('hidden');
 
-function addMessageDOM(text, sender) {
-    const msgDiv = document.createElement('div');
-    msgDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
-    msgDiv.textContent = text;
-    chatMessages.appendChild(msgDiv);
+function addChatMessage(text, sender) {
+    const div = document.createElement('div');
+    div.className = `message ${sender}-message`;
+    div.textContent = text;
+    chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-async function getPatientsContext(doctorId) {
-    const patientsRef = collection(db, "doctors", doctorId, "patients");
-    const querySnapshot = await getDocs(patientsRef);
-    if (querySnapshot.empty) return "База пациентов пуста.";
-    let context = "Список пациентов:\n";
-    querySnapshot.forEach((docSnap) => {
-        const p = docSnap.data();
-        context += `- ${p.name} (СНИЛС: ${p.snils || 'нет'}), Жалобы: ${p.symptoms}\n`;
-    });
-    return context;
-}
-
-sendMsgBtn.addEventListener('click', async () => {
+sendMsgBtn.onclick = async () => {
     const text = chatInput.value.trim();
     if (!text) return;
-    const user = auth.currentUser;
-    if (!user) return;
-
-    addMessageDOM(text, 'user');
+    addChatMessage(text, 'user');
     chatInput.value = '';
+    addChatMessage("Думаю...", 'bot');
+
+    // Собираем контекст: Пациенты + Расписание
+    let context = "Пациенты:\n";
+    currentPatients.forEach(p => context += `- ${p.name}, жалобы: ${p.symptoms}\n`);
     
-    // Получаем ФИО врача для контекста
-    const doctorName = dFullname.value || "Доктор";
-    addMessageDOM("Анализирую...", 'bot');
+    const scheduleSnap = await getDocs(collection(db, "doctors", auth.currentUser.uid, "schedule"));
+    context += "\nРасписание:\n";
+    scheduleSnap.forEach(s => context += `- ${s.data().date} в ${s.data().time}: ${s.data().patientName}\n`);
 
-    const patientsInfo = await getPatientsContext(user.uid);
-    const systemPrompt = `Ты — ассистент врача по имени ${doctorName}. Ты помогаешь анализировать симптомы. База пациентов: ${patientsInfo}`;
+    const sysPrompt = `Ты ассистент врача. Отвечай на вопросы, используя эти данные:\n${context}`;
 
-    const freeModels = ["google/gemma-2-9b-it:free", "meta-llama/llama-3-8b-instruct:free", "openrouter/free"];
-    let success = false;
-
-    for (const model of freeModels) {
-        try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [ { role: "system", content: systemPrompt }, { role: "user", content: text } ]
-                })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.choices && data.choices.length > 0) {
-                    chatMessages.removeChild(chatMessages.lastChild); // убираем "Анализирую"
-                    addMessageDOM(data.choices[0].message.content, 'bot');
-                    success = true;
-                    break; 
-                }
-            } else if (response.status === 429) { continue; } else { continue; }
-        } catch (error) { continue; }
-    }
-
-    if (!success) {
+    try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "meta-llama/llama-3-8b-instruct:free", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: text }] })
+        });
+        const data = await res.json();
         chatMessages.removeChild(chatMessages.lastChild);
-        addMessageDOM("Все модели перегружены. Подождите.", 'bot');
+        addChatMessage(data.choices[0].message.content, 'bot');
+    } catch (e) {
+        chatMessages.removeChild(chatMessages.lastChild);
+        addChatMessage("Ошибка соединения.", 'bot');
     }
-});
+};
 
-chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMsgBtn.click();
-});
+chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsgBtn.click(); });
