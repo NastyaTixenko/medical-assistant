@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Медицинский ассистент</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Медицинский ассистент</h1>
+
+        <!-- Форма входа/регистрации -->
+        <div id="auth-section">
+            <h2>Вход / Регистрация</h2>
+            <input type="email" id="email" placeholder="Email">
+            <input type="password" id="password" placeholder="Пароль">
+            <div class="buttons">
+                <button id="login-btn">Войти</button>
+                <button id="signup-btn">Зарегистрироваться</button>
+            </div>
+            <p id="auth-message" style="color: red;"></p>
+        </div>
+
+        <!-- Личный кабинет (скрыт по умолчанию) -->
+        <div id="app-section" style="display: none;">
+            <h2>Личный кабинет</h2>
+            <p>Вы вошли как: <span id="user-email"></span></p>
+            <button id="logout-btn">Выйти</button>
+        </div>
+    </div>
+
+    <!-- Подключаем наш JS-файл -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
