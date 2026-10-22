@@ -1,9 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-// Импорт для работы с фото
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 
+// --- НАСТРОЙКИ FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyBp8WY8Q63pXT4tpb5_gUJCK54wbU4SnbQ",
   authDomain: "medpomoshnick.firebaseapp.com",
@@ -17,12 +16,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
+
+// --- НАСТРОЙКИ CLOUDINARY И ИИ ---
+const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; // Твой Cloud Name
+const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; // Твой пресет (Unsigned)
 const OPENROUTER_API_KEY = "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"; 
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
-let patientToDeleteId = null;
+let currentModalPatientId = null;
 
 // --- УТИЛИТЫ (Уведомления и Модалки) ---
 function showToast(message, type = 'success') {
@@ -114,19 +116,44 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     showToast("Профиль успешно обновлен");
 });
 
-// Загрузка фото
+// Загрузка фото через Cloudinary
 document.getElementById('avatar-upload').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
     const user = auth.currentUser;
-    
-    const storageRef = ref(storage, `avatars/${user.uid}`);
-    await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(storageRef);
-    
-    await setDoc(doc(db, "doctors", user.uid), { photoURL: url }, { merge: true });
-    document.getElementById('profile-avatar-img').src = url;
-    showToast("Фото загружено");
+    if (!user) return;
+
+    const imgElement = document.getElementById('profile-avatar-img');
+    imgElement.style.opacity = '0.4';
+    showToast("Загрузка фото...", "info");
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.secure_url) {
+            const url = data.secure_url;
+            await setDoc(doc(db, "doctors", user.uid), { photoURL: url }, { merge: true });
+            imgElement.src = url;
+            showToast("Фото успешно загружено");
+        } else {
+            throw new Error("Не удалось получить ссылку");
+        }
+    } catch (error) {
+        console.error("Ошибка загрузки фото:", error);
+        showToast("Ошибка при загрузке фото", "error");
+    } finally {
+        imgElement.style.opacity = '1';
+    }
 });
 
 // --- ПАЦИЕНТЫ ---
@@ -163,7 +190,6 @@ function renderPatientsTable(filterText = '') {
     });
 }
 
-// Поиск
 document.getElementById('search-patient').addEventListener('input', (e) => {
     renderPatientsTable(e.target.value);
 });
@@ -178,7 +204,10 @@ document.getElementById('add-patient-btn').addEventListener('click', async () =>
     if (!name || !symptoms) return showToast("Заполните ФИО и жалобы", "error");
 
     await addDoc(collection(db, "doctors", user.uid, "patients"), { name, snils, dob, symptoms });
-    document.getElementById('p-name').value = ''; document.getElementById('p-snils').value = ''; document.getElementById('p-symptoms').value = '';
+    document.getElementById('p-name').value = ''; 
+    document.getElementById('p-snils').value = ''; 
+    document.getElementById('p-dob').value = ''; 
+    document.getElementById('p-symptoms').value = '';
     loadPatients(user.uid);
     showToast("Пациент добавлен");
 });
@@ -199,7 +228,7 @@ document.getElementById('export-csv-btn').addEventListener('click', () => {
     link.click();
 });
 
-// Удаление
+// Удаление пациента
 window.promptDeletePatient = (id) => {
     showConfirm("Вы действительно хотите удалить пациента из базы?", async () => {
         await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "patients", id));
@@ -239,7 +268,6 @@ async function loadSchedule(doctorId) {
     tbody.innerHTML = '';
     const snap = await getDocs(collection(db, "doctors", doctorId, "schedule"));
     
-    // Сортировка по дате и времени
     let schedule = [];
     snap.forEach(d => schedule.push({ id: d.id, ...d.data() }));
     schedule.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
@@ -265,9 +293,7 @@ window.deleteSchedule = (id) => {
     });
 };
 
-// --- МОДАЛКА ПАЦИЕНТА И ИИ ---
-let currentModalPatientId = null;
-
+// --- МОДАЛКА ПАЦИЕНТА И ГЕНЕРАЦИЯ НАЗНАЧЕНИЙ ---
 window.openPatientModal = (id) => {
     const p = currentPatients.find(x => x.id === id);
     if (!p) return;
@@ -290,8 +316,9 @@ document.getElementById('generate-prescription-btn').addEventListener('click', a
     const p = currentPatients.find(x => x.id === currentModalPatientId);
     const btn = document.getElementById('generate-prescription-btn');
     btn.textContent = "Генерация...";
+    btn.disabled = true;
     
-    const prompt = `Ты врач. Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения и рекомендации.`;
+    const prompt = `Ты опытный врач. Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения и рекомендации.`;
     
     try {
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -305,6 +332,7 @@ document.getElementById('generate-prescription-btn').addEventListener('click', a
         showToast("Ошибка генерации ИИ", "error");
     }
     btn.textContent = "Сгенерировать через ИИ";
+    btn.disabled = false;
 });
 
 document.getElementById('save-prescription-btn').addEventListener('click', async () => {
@@ -339,17 +367,21 @@ function addChatMessage(text, sender) {
 sendMsgBtn.onclick = async () => {
     const text = chatInput.value.trim();
     if (!text) return;
+    
     addChatMessage(text, 'user');
     chatInput.value = '';
     addChatMessage("Думаю...", 'bot');
 
-    // Собираем контекст: Пациенты + Расписание
+    // Собираем контекст (Пациенты + Расписание)
     let context = "Пациенты:\n";
     currentPatients.forEach(p => context += `- ${p.name}, жалобы: ${p.symptoms}\n`);
     
     const scheduleSnap = await getDocs(collection(db, "doctors", auth.currentUser.uid, "schedule"));
     context += "\nРасписание:\n";
-    scheduleSnap.forEach(s => context += `- ${s.data().date} в ${s.data().time}: ${s.data().patientName}\n`);
+    scheduleSnap.forEach(s => {
+        const data = s.data();
+        context += `- ${data.date} в ${data.time}: ${data.patientName}\n`;
+    });
 
     const sysPrompt = `Ты ассистент врача. Отвечай на вопросы, используя эти данные:\n${context}`;
 
@@ -357,14 +389,18 @@ sendMsgBtn.onclick = async () => {
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: "meta-llama/llama-3-8b-instruct:free", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: text }] })
+            body: JSON.stringify({ 
+                model: "meta-llama/llama-3-8b-instruct:free", 
+                messages: [{ role: "system", content: sysPrompt }, { role: "user", content: text }] 
+            })
         });
         const data = await res.json();
-        chatMessages.removeChild(chatMessages.lastChild);
+        
+        chatMessages.removeChild(chatMessages.lastChild); // Удаляем "Думаю..."
         addChatMessage(data.choices[0].message.content, 'bot');
     } catch (e) {
         chatMessages.removeChild(chatMessages.lastChild);
-        addChatMessage("Ошибка соединения.", 'bot');
+        addChatMessage("Ошибка соединения с ИИ.", 'bot');
     }
 };
 
