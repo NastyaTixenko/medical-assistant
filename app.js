@@ -139,6 +139,7 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
         });
 
         const data = await response.json();
+        console.log("Ответ от Cloudinary:", data); // Это поможет нам увидеть ошибку в консоли
 
         if (data.secure_url) {
             const url = data.secure_url;
@@ -146,11 +147,14 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
             imgElement.src = url;
             showToast("Фото успешно загружено");
         } else {
-            throw new Error("Не удалось получить ссылку");
+            // Если Cloudinary вернул ошибку, показываем её текст
+            const errorMsg = data.error ? data.error.message : "Неизвестная ошибка";
+            throw new Error(errorMsg);
         }
     } catch (error) {
         console.error("Ошибка загрузки фото:", error);
-        showToast("Ошибка при загрузке фото", "error");
+        // Показываем реальную ошибку на экране
+        showToast("Ошибка: " + error.message, "error");
     } finally {
         imgElement.style.opacity = '1';
     }
