@@ -17,19 +17,25 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- НАСТРОЙКИ CLOUDINARY И ПРОКСИ GIGACHAT ---
+// --- НАСТРОЙКИ CLOUDINARY И OPENROUTER ---
 const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; 
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
+const OPENROUTER_API_KEY = "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"; 
 
-// ВАШ НОВЫЙ АДРЕС ПРОКСИ НА DENO DEPLOY
-const PROXY_URL = "https://numb-mule-4536.nastyatixenko.deno.net"; 
+// Список актуальных бесплатных моделей (если одна падает, пробуем следующую)
+const FREE_MODELS = [
+    "google/gemma-2-9b-it:free",
+    "meta-llama/llama-3-8b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "openrouter/free"
+];
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
 let currentModalPatientId = null;
 
-// --- УТИЛИТЫ (Уведомления и Модалки) ---
+// --- УТИЛИТЫ ---
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -50,37 +56,34 @@ function showConfirm(text, onConfirm) {
     noBtn.onclick = close;
 }
 
-// --- ФУНКЦИЯ ОБЩЕНИЯ С GIGACHAT (ЧЕРЕЗ ПРОКСИ) ---
+// --- ФУНКЦИЯ ОБЩЕНИЯ С OPENROUTER ---
 async function callAI(messages, temperature = 0.7) {
-    try {
-        const response = await fetch(PROXY_URL, {
-            method: "POST",
-            headers: { 
-                "Content-Type": "application/json" 
-            },
-            body: JSON.stringify({ 
-                model: "GigaChat",
-                messages: messages,
-                temperature: temperature,
-                stream: false
-            })
-        });
+    let lastError = null;
+    for (const model of FREE_MODELS) {
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: { 
+                    "Authorization": `Bearer ${OPENROUTER_API_KEY}`, 
+                    "Content-Type": "application/json" 
+                },
+                body: JSON.stringify({ model, messages, temperature })
+            });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Ошибка сервера: ${response.status}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.choices && data.choices.length > 0) {
+                    return data.choices[0].message.content;
+                }
+            } else {
+                console.warn(`Модель ${model} вернула код ${response.status}, пробуем следующую...`);
+            }
+        } catch (e) {
+            console.error(`Ошибка сети для модели ${model}:`, e);
+            lastError = e;
         }
-
-        const data = await response.json();
-        if (data.choices && data.choices.length > 0) {
-            return data.choices[0].message.content;
-        } else {
-            throw new Error("Пустой ответ от GigaChat");
-        }
-    } catch (error) {
-        console.error("Ошибка GigaChat:", error);
-        throw error;
     }
+    throw lastError || new Error("Не удалось получить ответ от ИИ. Убедитесь, что включен VPN.");
 }
 
 // --- АВТОРИЗАЦИЯ ---
@@ -310,7 +313,7 @@ document.getElementById('generate-prescription-btn').addEventListener('click', a
         const aiReply = await callAI([{ role: "user", content: prompt }]);
         document.getElementById('ai-prescription-text').value = aiReply;
     } catch (e) {
-        showToast("Ошибка генерации ИИ: " + e.message, "error");
+        showToast("Ошибка: Включите VPN для работы ИИ!", "error");
     } finally {
         btn.textContent = "Сгенерировать через ИИ";
         btn.disabled = false;
@@ -379,7 +382,7 @@ ${context}`;
         addChatMessage(aiReply, 'bot');
     } catch (e) {
         chatMessages.removeChild(chatMessages.lastChild);
-        addChatMessage("Ошибка соединения с ИИ: " + e.message, 'bot');
+        addChatMessage("Ошибка: Не удалось связаться с ИИ. Включите VPN и попробуйте снова.", 'bot');
     }
 };
 
