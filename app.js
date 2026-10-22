@@ -23,7 +23,6 @@ const CLOUDINARY_UPLOAD_PRESET = "medical_upload";
 const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
 
-// Актуальный список бесплатных моделей для резервного переключения
 const FREE_MODELS = [
     "google/gemma-4-31b-it:free",
     "meta-llama/llama-3.3-70b-instruct:free",
@@ -36,7 +35,7 @@ const FREE_MODELS = [
 let currentPatients = [];
 let currentModalPatientId = null;
 
-// --- УТИЛИТЫ (Уведомления и Модалки) ---
+// --- УТИЛИТЫ ---
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -57,7 +56,6 @@ function showConfirm(text, onConfirm) {
     noBtn.onclick = close;
 }
 
-// Функция для отправки запроса к ИИ с автоматическим перебором моделей
 async function callAI(messages, temperature = 0.7) {
     let lastError = null;
     for (const model of FREE_MODELS) {
@@ -70,11 +68,8 @@ async function callAI(messages, temperature = 0.7) {
             if (response.ok) {
                 const data = await response.json();
                 if (data.choices && data.choices.length > 0) {
-                    console.log(`Успешный ответ от модели: ${model}`);
                     return data.choices[0].message.content;
                 }
-            } else {
-                console.warn(`Модель ${model} вернула код ${response.status}, пробуем следующую...`);
             }
         } catch (e) {
             console.error(`Ошибка сети для модели ${model}:`, e);
@@ -83,7 +78,6 @@ async function callAI(messages, temperature = 0.7) {
     }
     throw lastError || new Error("Не удалось получить ответ ни от одной из доступных моделей.");
 }
-
 
 // --- АВТОРИЗАЦИЯ ---
 const authSection = document.getElementById('auth-section');
@@ -114,7 +108,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// --- НАВИГАЦИЯ (Вкладки) ---
+// --- НАВИГАЦИЯ ---
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -151,7 +145,7 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     showToast("Профиль успешно обновлен");
 });
 
-// --- ЗАГРУЗКА ФОТО ЧЕРЕЗ CLOUDINARY ---
+// --- ЗАГРУЗКА ФОТО ---
 document.getElementById('avatar-upload').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -172,10 +166,9 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
             imgElement.src = data.secure_url;
             showToast("Фото успешно загружено");
         } else {
-            throw new Error(data.error ? data.error.message : "Неизвестная ошибка");
+            throw new Error(data.error ? data.error.message : "Ошибка");
         }
     } catch (error) {
-        console.error("Ошибка загрузки фото:", error);
         showToast("Ошибка: " + error.message, "error");
     } finally {
         imgElement.style.opacity = '1';
@@ -225,7 +218,6 @@ document.getElementById('add-patient-btn').addEventListener('click', async () =>
     showToast("Пациент добавлен");
 });
 
-// Экспорт в CSV
 document.getElementById('export-csv-btn').addEventListener('click', () => {
     if (currentPatients.length === 0) return showToast("Нет данных для экспорта", "error");
     let csv = "ФИО;СНИЛС;Дата рождения;Жалобы\n";
@@ -237,7 +229,6 @@ document.getElementById('export-csv-btn').addEventListener('click', () => {
     link.click();
 });
 
-// Удаление пациента
 window.promptDeletePatient = (id) => {
     showConfirm("Вы действительно хотите удалить пациента из базы?", async () => {
         await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "patients", id));
@@ -290,7 +281,7 @@ window.deleteSchedule = (id) => {
     });
 };
 
-// --- МОДАЛКА ПАЦИЕНТА И ГЕНЕРАЦИЯ НАЗНАЧЕНИЙ ---
+// --- МОДАЛКА ПАЦИЕНТА ---
 window.openPatientModal = (id) => {
     const p = currentPatients.find(x => x.id === id);
     if (!p) return;
@@ -330,7 +321,7 @@ document.getElementById('save-prescription-btn').addEventListener('click', async
     loadPatients(auth.currentUser.uid);
 });
 
-// --- ЧАТ-АССИСТЕНТ ---
+// --- ЧАТ-АССИСТЕНТ (ИСПРАВЛЕННЫЙ) ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -352,19 +343,36 @@ function addChatMessage(text, sender) {
 sendMsgBtn.onclick = async () => {
     const text = chatInput.value.trim();
     if (!text) return;
+    
     addChatMessage(text, 'user');
     chatInput.value = '';
-    addChatMessage("Думаю...", 'bot');
+    addChatMessage("Анализирую...", 'bot');
 
-    let context = "Пациенты:\n";
-    currentPatients.forEach(p => context += `- ${p.name}, жалобы: ${p.symptoms}\n`);
+    // Формируем максимально понятный контекст для ИИ
+    let context = "--- СПИСОК ПАЦИЕНТОВ ---\n";
+    currentPatients.forEach(p => {
+        context += `ФИО: ${p.name} | Жалобы: ${p.symptoms}\n`;
+    });
+    
     const scheduleSnap = await getDocs(collection(db, "doctors", auth.currentUser.uid, "schedule"));
-    context += "\nРасписание:\n";
-    scheduleSnap.forEach(s => { const data = s.data(); context += `- ${data.date} в ${data.time}: ${data.patientName}\n`; });
+    context += "\n--- РАСПИСАНИЕ ПРИЕМОВ ---\n";
+    scheduleSnap.forEach(s => {
+        const data = s.data();
+        context += `Дата: ${data.date} | Время: ${data.time} | ФИО пациента: ${data.patientName} | Причина: ${data.reason || 'не указана'}\n`;
+    });
 
-    const sysPrompt = `Ты ассистент врача. Отвечай на вопросы, используя эти данные:\n${context}`;
+    // Жесткая инструкция для ИИ
+    const sysPrompt = `Ты — умный медицинский ассистент. Ты общаешься с ВРАЧОМ (не с пациентом). 
+Твоя задача — помогать врачу с его расписанием и базой пациентов.
+ВАЖНОЕ ПРАВИЛО: Когда ты говоришь о приеме или карточке, ты ОБЯЗАН четко указывать ФИО пациента, о котором идет речь. Никогда не пиши "в вашей карточке", пиши "в карточке пациента [ФИО]".
+Вот актуальные данные из базы:
+${context}`;
+
     try {
-        const aiReply = await callAI([{ role: "system", content: sysPrompt }, { role: "user", content: text }]);
+        const aiReply = await callAI([
+            { role: "system", content: sysPrompt }, 
+            { role: "user", content: text }
+        ]);
         chatMessages.removeChild(chatMessages.lastChild); 
         addChatMessage(aiReply, 'bot');
     } catch (e) {
