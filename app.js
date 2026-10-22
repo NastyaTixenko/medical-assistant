@@ -21,7 +21,9 @@ const db = getFirestore(app);
 const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; 
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
-const PROXY_URL = "https://gigachat-proxy.ldwiamanchik.workers.dev"; // Твой прокси GigaChat
+
+// ВАШ НОВЫЙ АДРЕС ПРОКСИ НА CLOUDFLARE PAGES
+const PROXY_URL = "https://med-ai-gigachat-proxy.pages.dev"; 
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
