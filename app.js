@@ -95,7 +95,7 @@ sendMsgBtn.addEventListener('click', async () => {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                model: "meta-llama/llama-3.1-8b-instruct:free", // Бесплатная модель
+                model: "google/gemma-4-26b-a4b-it:free", // Актуальная бесплатная модель // Бесплатная модель
                 messages: [
                     { role: "system", content: "Ты — вежливый виртуальный медицинский ассистент. Ты помогаешь пользователям разобраться в симптомах и подсказываешь, к какому врачу обратиться. Обязательно напоминай, что твои советы не заменяют консультацию реального врача." },
                     { role: "user", content: text }
