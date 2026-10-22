@@ -2,7 +2,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/fireba
 import { 
     getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut 
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-// Добавляем импорты для работы с базой данных Firestore
 import { 
     getFirestore, doc, getDoc, setDoc, arrayUnion 
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
@@ -20,12 +19,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app); // Инициализация базы данных
+const db = getFirestore(app);
 
-// ТВОЙ КЛЮЧ ОТ OPENROUTER
 const OPENROUTER_API_KEY = "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"; 
 
-// --- ЛОГИКА АВТОРИЗАЦИИ FIREBASE ---
+// --- ЭЛЕМЕНТЫ СТРАНИЦЫ ---
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const loginBtn = document.getElementById('login-btn');
@@ -36,6 +34,14 @@ const appSection = document.getElementById('app-section');
 const userEmailSpan = document.getElementById('user-email');
 const authMessage = document.getElementById('auth-message');
 
+// Элементы медкарты
+const bloodTypeInput = document.getElementById('blood-type');
+const allergiesInput = document.getElementById('allergies');
+const diseasesInput = document.getElementById('diseases');
+const saveMedBtn = document.getElementById('save-med-btn');
+const saveStatus = document.getElementById('save-status');
+
+// --- АВТОРИЗАЦИЯ ---
 signupBtn.addEventListener('click', () => {
     createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
         .then(() => { authMessage.textContent = "Регистрация успешна!"; authMessage.style.color = "green"; })
@@ -48,27 +54,69 @@ loginBtn.addEventListener('click', () => {
         .catch((error) => { authMessage.textContent = "Ошибка: " + error.message; authMessage.style.color = "red"; });
 });
 
-// Следим за состоянием пользователя
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
         authSection.style.display = 'none';
         appSection.style.display = 'block';
         userEmailSpan.textContent = user.email;
         emailInput.value = ""; passwordInput.value = "";
         
-        // Загружаем историю чата для этого пользователя
+        // Загружаем историю чата
         loadChatHistory(user.uid);
+        // Загружаем медицинскую карту
+        loadMedicalData(user.uid);
     } else {
         authSection.style.display = 'block';
         appSection.style.display = 'none';
-        // Очищаем окно чата при выходе
         chatMessages.innerHTML = '<div class="message bot-message">Здравствуйте! Я ваш медицинский ассистент. Чем я могу помочь? Помните, что я не заменяю врача.</div>';
+        bloodTypeInput.value = ''; allergiesInput.value = ''; diseasesInput.value = '';
     }
 });
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// --- ЛОГИКА ИИ ЧАТА ---
+// --- МЕДИЦИНСКАЯ КАРТА ---
+async function loadMedicalData(userId) {
+    try {
+        const docSnap = await getDoc(doc(db, "users", userId));
+        if (docSnap.exists() && docSnap.data().medicalData) {
+            const data = docSnap.data().medicalData;
+            bloodTypeInput.value = data.bloodType || '';
+            allergiesInput.value = data.allergies || '';
+            diseasesInput.value = data.diseases || '';
+        }
+    } catch (error) {
+        console.error("Ошибка загрузки медкарты:", error);
+    }
+}
+
+saveMedBtn.addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    saveStatus.textContent = "Сохранение...";
+    saveStatus.style.color = "gray";
+
+    try {
+        await setDoc(doc(db, "users", user.uid), {
+            medicalData: {
+                bloodType: bloodTypeInput.value,
+                allergies: allergiesInput.value,
+                diseases: diseasesInput.value
+            }
+        }, { merge: true });
+        
+        saveStatus.textContent = "Данные успешно сохранены!";
+        saveStatus.style.color = "green";
+        setTimeout(() => { saveStatus.textContent = ""; }, 3000); // Скрываем через 3 сек
+    } catch (error) {
+        console.error("Ошибка сохранения:", error);
+        saveStatus.textContent = "Ошибка сохранения. Проверьте права доступа.";
+        saveStatus.style.color = "red";
+    }
+});
+
+// --- ЧАТ-АССИСТЕНТ ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -79,7 +127,6 @@ const chatMessages = document.getElementById('chat-messages');
 chatToggleBtn.addEventListener('click', () => chatWindow.classList.remove('hidden'));
 closeChatBtn.addEventListener('click', () => chatWindow.classList.add('hidden'));
 
-// Функция добавления сообщения только на экран (без сохранения в БД)
 function addMessageDOM(text, sender) {
     const msgDiv = document.createElement('div');
     msgDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
@@ -88,54 +135,47 @@ function addMessageDOM(text, sender) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Функция сохранения сообщения в базу данных Firestore
 async function saveMessageToDB(userId, text, sender) {
     try {
-        const userDocRef = doc(db, "users", userId);
-        // arrayUnion добавляет новое сообщение в массив, не удаляя старые
-        await setDoc(userDocRef, {
-            chatHistory: arrayUnion({
-                text: text,
-                sender: sender,
-                timestamp: new Date().toISOString()
-            })
+        await setDoc(doc(db, "users", userId), {
+            chatHistory: arrayUnion({ text: text, sender: sender, timestamp: new Date().toISOString() })
         }, { merge: true });
-    } catch (error) {
-        console.error("Ошибка при сохранении сообщения в БД:", error);
-    }
+    } catch (error) { console.error("Ошибка сохранения сообщения:", error); }
 }
 
-// Функция загрузки истории из базы данных
 async function loadChatHistory(userId) {
     try {
-        const userDocRef = doc(db, "users", userId);
-        const docSnap = await getDoc(userDocRef);
-
-        // Если у пользователя уже есть история
+        const docSnap = await getDoc(doc(db, "users", userId));
         if (docSnap.exists() && docSnap.data().chatHistory) {
-            chatMessages.innerHTML = ''; // Очищаем дефолтное приветствие
-            const history = docSnap.data().chatHistory;
-            history.forEach(msg => {
-                addMessageDOM(msg.text, msg.sender);
-            });
+            chatMessages.innerHTML = ''; 
+            docSnap.data().chatHistory.forEach(msg => addMessageDOM(msg.text, msg.sender));
         }
-    } catch (error) {
-        console.error("Ошибка при загрузке истории:", error);
-    }
+    } catch (error) { console.error("Ошибка загрузки истории:", error); }
 }
 
-// Отправка сообщения
 sendMsgBtn.addEventListener('click', async () => {
     const text = chatInput.value.trim();
     if (!text) return;
-
-    const user = auth.currentUser; // Получаем текущего пользователя
+    const user = auth.currentUser;
     if (!user) return;
 
-    // Выводим на экран и сохраняем в БД сообщение пользователя
     addMessageDOM(text, 'user');
     saveMessageToDB(user.uid, text, 'user');
     chatInput.value = '';
+
+    // Получаем данные медкарты для контекста ИИ
+    let medContext = "У пользователя пока не заполнена медицинская карта.";
+    try {
+        const docSnap = await getDoc(doc(db, "users", user.uid));
+        if (docSnap.exists() && docSnap.data().medicalData) {
+            const data = docSnap.data().medicalData;
+            if(data.bloodType || data.allergies || data.diseases) {
+                medContext = `Медицинские данные пользователя: Группа крови: ${data.bloodType || 'не указана'}, Аллергии: ${data.allergies || 'нет'}, Хронические болезни: ${data.diseases || 'нет'}. Учитывай это при ответе.`;
+            }
+        }
+    } catch (e) { console.error(e); }
+
+    const systemPrompt = `Ты — вежливый виртуальный медицинский ассистент. Обязательно напоминай, что твои советы не заменяют консультацию реального врача. ${medContext}`;
 
     const freeModels = [
         "google/gemma-2-9b-it:free",
@@ -157,7 +197,7 @@ sendMsgBtn.addEventListener('click', async () => {
                 body: JSON.stringify({
                     model: model,
                     messages: [
-                        { role: "system", content: "Ты — вежливый виртуальный медицинский ассистент. Ты помогаешь пользователям разобраться в симптомах и подсказываешь, к какому врачу обратиться. Обязательно напоминай, что твои советы не заменяют консультацию реального врача." },
+                        { role: "system", content: systemPrompt },
                         { role: "user", content: text }
                     ]
                 })
@@ -167,37 +207,24 @@ sendMsgBtn.addEventListener('click', async () => {
                 const data = await response.json();
                 if (data.choices && data.choices.length > 0) {
                     const aiReply = data.choices[0].message.content;
-                    
-                    // Выводим на экран и сохраняем в БД ответ ИИ
                     addMessageDOM(aiReply, 'bot');
                     saveMessageToDB(user.uid, aiReply, 'bot');
-                    
                     success = true;
                     break; 
                 }
             } 
-            else if (response.status === 429) {
-                console.warn(`Модель ${model} перегружена (429). Пробуем следующую...`);
-                continue; 
-            }
-            else {
-                console.warn(`Ошибка ${response.status} для модели ${model}. Пробуем следующую...`);
-                continue;
-            }
-        } catch (error) {
-            console.error(`Ошибка сети для модели ${model}:`, error);
-            continue;
-        }
+            else if (response.status === 429) { continue; }
+            else { continue; }
+        } catch (error) { continue; }
     }
 
     if (!success) {
-        const errorMsg = "Извините, все бесплатные модели сейчас перегружены. Пожалуйста, подождите минуту и попробуйте снова.";
+        const errorMsg = "Извините, все бесплатные модели сейчас перегружены. Подождите минуту.";
         addMessageDOM(errorMsg, 'bot');
         saveMessageToDB(user.uid, errorMsg, 'bot');
     }
 });
 
-// Отправка по нажатию Enter
 chatInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMsgBtn.click();
 });
