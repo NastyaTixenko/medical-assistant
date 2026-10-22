@@ -18,8 +18,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- НАСТРОЙКИ CLOUDINARY И ИИ ---
-const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; // Твой Cloud Name
-const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; // Твой пресет (Unsigned)
+const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; 
+const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
+const CLOUDINARY_API_KEY = "856839289392595"; // Твой API Key
 const OPENROUTER_API_KEY = "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"; 
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
@@ -116,7 +117,7 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     showToast("Профиль успешно обновлен");
 });
 
-// Загрузка фото через Cloudinary
+// --- ЗАГРУЗКА ФОТО ЧЕРЕЗ CLOUDINARY ---
 document.getElementById('avatar-upload').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -132,6 +133,7 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
         const formData = new FormData();
         formData.append('file', file);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+        formData.append('api_key', CLOUDINARY_API_KEY); // Добавили ключ
 
         const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
             method: 'POST',
@@ -139,7 +141,7 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
         });
 
         const data = await response.json();
-        console.log("Ответ от Cloudinary:", data); // Это поможет нам увидеть ошибку в консоли
+        console.log("Ответ от Cloudinary:", data);
 
         if (data.secure_url) {
             const url = data.secure_url;
@@ -147,13 +149,11 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
             imgElement.src = url;
             showToast("Фото успешно загружено");
         } else {
-            // Если Cloudinary вернул ошибку, показываем её текст
             const errorMsg = data.error ? data.error.message : "Неизвестная ошибка";
             throw new Error(errorMsg);
         }
     } catch (error) {
         console.error("Ошибка загрузки фото:", error);
-        // Показываем реальную ошибку на экране
         showToast("Ошибка: " + error.message, "error");
     } finally {
         imgElement.style.opacity = '1';
@@ -376,7 +376,6 @@ sendMsgBtn.onclick = async () => {
     chatInput.value = '';
     addChatMessage("Думаю...", 'bot');
 
-    // Собираем контекст (Пациенты + Расписание)
     let context = "Пациенты:\n";
     currentPatients.forEach(p => context += `- ${p.name}, жалобы: ${p.symptoms}\n`);
     
@@ -400,7 +399,7 @@ sendMsgBtn.onclick = async () => {
         });
         const data = await res.json();
         
-        chatMessages.removeChild(chatMessages.lastChild); // Удаляем "Думаю..."
+        chatMessages.removeChild(chatMessages.lastChild); 
         addChatMessage(data.choices[0].message.content, 'bot');
     } catch (e) {
         chatMessages.removeChild(chatMessages.lastChild);
