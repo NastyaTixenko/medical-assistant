@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+// Добавили arrayUnion для добавления сообщений в массив без перезаписи
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // --- НАСТРОЙКИ FIREBASE ---
 const firebaseConfig = {
@@ -23,7 +24,6 @@ const CLOUDINARY_UPLOAD_PRESET = "medical_upload";
 const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
 
-// Список актуальных бесплатных моделей (если одна падает, пробуем следующую)
 const FREE_MODELS = [
     "google/gemma-2-9b-it:free",
     "meta-llama/llama-3-8b-instruct:free",
@@ -109,9 +109,11 @@ onAuthStateChanged(auth, (user) => {
         loadProfile(user.uid);
         loadPatients(user.uid);
         loadSchedule(user.uid);
+        loadChatHistory(user.uid); // Загружаем историю чата при входе
     } else {
         authSection.style.display = 'flex';
         appSection.style.display = 'none';
+        document.getElementById('chat-messages').innerHTML = ''; // Очищаем при выходе
     }
 });
 
@@ -328,7 +330,7 @@ document.getElementById('save-prescription-btn').addEventListener('click', async
     loadPatients(auth.currentUser.uid);
 });
 
-// --- ЧАТ-АССИСТЕНТ ---
+// --- ЧАТ-АССИСТЕНТ И ИСТОРИЯ ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -339,6 +341,7 @@ const chatMessages = document.getElementById('chat-messages');
 chatToggleBtn.onclick = () => chatWindow.classList.remove('hidden');
 closeChatBtn.onclick = () => chatWindow.classList.add('hidden');
 
+// Отрисовка сообщения в окне
 function addChatMessage(text, sender) {
     const div = document.createElement('div');
     div.className = `message ${sender}-message`;
@@ -347,11 +350,43 @@ function addChatMessage(text, sender) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// Загрузка истории из Firebase
+async function loadChatHistory(userId) {
+    chatMessages.innerHTML = ''; // Очищаем окно
+    const docSnap = await getDoc(doc(db, "doctors", userId));
+    
+    // Если есть сохраненная история, выводим её
+    if (docSnap.exists() && docSnap.data().chatHistory) {
+        const history = docSnap.data().chatHistory;
+        history.forEach(msg => addChatMessage(msg.text, msg.sender));
+    } else {
+        // Если истории нет, показываем приветствие
+        addChatMessage("Здравствуйте. Я помогу вам с расписанием и пациентами.", 'bot');
+    }
+}
+
+// Сохранение сообщения в Firebase
+async function saveChatMessage(userId, text, sender) {
+    try {
+        await setDoc(doc(db, "doctors", userId), {
+            chatHistory: arrayUnion({ text: text, sender: sender, timestamp: new Date().toISOString() })
+        }, { merge: true });
+    } catch (e) {
+        console.error("Ошибка сохранения сообщения чата:", e);
+    }
+}
+
 sendMsgBtn.onclick = async () => {
     const text = chatInput.value.trim();
     if (!text) return;
     
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // 1. Добавляем на экран и сохраняем в БД сообщение пользователя
     addChatMessage(text, 'user');
+    saveChatMessage(user.uid, text, 'user');
+    
     chatInput.value = '';
     addChatMessage("Анализирую...", 'bot');
 
@@ -360,7 +395,7 @@ sendMsgBtn.onclick = async () => {
         context += `ФИО: ${p.name} | Жалобы: ${p.symptoms}\n`;
     });
     
-    const scheduleSnap = await getDocs(collection(db, "doctors", auth.currentUser.uid, "schedule"));
+    const scheduleSnap = await getDocs(collection(db, "doctors", user.uid, "schedule"));
     context += "\n--- РАСПИСАНИЕ ПРИЕМОВ ---\n";
     scheduleSnap.forEach(s => {
         const data = s.data();
@@ -378,11 +413,18 @@ ${context}`;
             { role: "system", content: sysPrompt }, 
             { role: "user", content: text }
         ]);
+        
+        // Убираем "Анализирую...", выводим и сохраняем ответ ИИ
         chatMessages.removeChild(chatMessages.lastChild); 
         addChatMessage(aiReply, 'bot');
+        saveChatMessage(user.uid, aiReply, 'bot');
+
     } catch (e) {
         chatMessages.removeChild(chatMessages.lastChild);
-        addChatMessage("Ошибка: Не удалось связаться с ИИ. Включите VPN и попробуйте снова.", 'bot');
+        const errorMsg = "Ошибка: Не удалось связаться с ИИ. Включите VPN и попробуйте снова.";
+        addChatMessage(errorMsg, 'bot');
+        // Ошибку тоже можно сохранить, чтобы не терялась логика, но по желанию
+        saveChatMessage(user.uid, errorMsg, 'bot');
     }
 };
 
