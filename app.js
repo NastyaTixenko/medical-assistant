@@ -2,6 +2,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/fireba
 import { 
     getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut 
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+// Добавляем импорты для работы с базой данных Firestore
+import { 
+    getFirestore, doc, getDoc, setDoc, arrayUnion 
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // ТВОЙ FIREBASE КОНФИГ
 const firebaseConfig = {
@@ -16,6 +20,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app); // Инициализация базы данных
 
 // ТВОЙ КЛЮЧ ОТ OPENROUTER
 const OPENROUTER_API_KEY = "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"; 
@@ -43,15 +48,21 @@ loginBtn.addEventListener('click', () => {
         .catch((error) => { authMessage.textContent = "Ошибка: " + error.message; authMessage.style.color = "red"; });
 });
 
+// Следим за состоянием пользователя
 onAuthStateChanged(auth, (user) => {
     if (user) {
         authSection.style.display = 'none';
         appSection.style.display = 'block';
         userEmailSpan.textContent = user.email;
         emailInput.value = ""; passwordInput.value = "";
+        
+        // Загружаем историю чата для этого пользователя
+        loadChatHistory(user.uid);
     } else {
         authSection.style.display = 'block';
         appSection.style.display = 'none';
+        // Очищаем окно чата при выходе
+        chatMessages.innerHTML = '<div class="message bot-message">Здравствуйте! Я ваш медицинский ассистент. Чем я могу помочь? Помните, что я не заменяю врача.</div>';
     }
 });
 
@@ -68,7 +79,8 @@ const chatMessages = document.getElementById('chat-messages');
 chatToggleBtn.addEventListener('click', () => chatWindow.classList.remove('hidden'));
 closeChatBtn.addEventListener('click', () => chatWindow.classList.add('hidden'));
 
-function addMessage(text, sender) {
+// Функция добавления сообщения только на экран (без сохранения в БД)
+function addMessageDOM(text, sender) {
     const msgDiv = document.createElement('div');
     msgDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
     msgDiv.textContent = text;
@@ -76,20 +88,60 @@ function addMessage(text, sender) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// Отправка сообщения с умным переключением моделей при ошибке 429
+// Функция сохранения сообщения в базу данных Firestore
+async function saveMessageToDB(userId, text, sender) {
+    try {
+        const userDocRef = doc(db, "users", userId);
+        // arrayUnion добавляет новое сообщение в массив, не удаляя старые
+        await setDoc(userDocRef, {
+            chatHistory: arrayUnion({
+                text: text,
+                sender: sender,
+                timestamp: new Date().toISOString()
+            })
+        }, { merge: true });
+    } catch (error) {
+        console.error("Ошибка при сохранении сообщения в БД:", error);
+    }
+}
+
+// Функция загрузки истории из базы данных
+async function loadChatHistory(userId) {
+    try {
+        const userDocRef = doc(db, "users", userId);
+        const docSnap = await getDoc(userDocRef);
+
+        // Если у пользователя уже есть история
+        if (docSnap.exists() && docSnap.data().chatHistory) {
+            chatMessages.innerHTML = ''; // Очищаем дефолтное приветствие
+            const history = docSnap.data().chatHistory;
+            history.forEach(msg => {
+                addMessageDOM(msg.text, msg.sender);
+            });
+        }
+    } catch (error) {
+        console.error("Ошибка при загрузке истории:", error);
+    }
+}
+
+// Отправка сообщения
 sendMsgBtn.addEventListener('click', async () => {
     const text = chatInput.value.trim();
     if (!text) return;
 
-    addMessage(text, 'user');
+    const user = auth.currentUser; // Получаем текущего пользователя
+    if (!user) return;
+
+    // Выводим на экран и сохраняем в БД сообщение пользователя
+    addMessageDOM(text, 'user');
+    saveMessageToDB(user.uid, text, 'user');
     chatInput.value = '';
 
-    // Список резервных бесплатных моделей
     const freeModels = [
         "google/gemma-2-9b-it:free",
         "meta-llama/llama-3-8b-instruct:free",
         "mistralai/mistral-7b-instruct:free",
-        "openrouter/free" // Универсальный роутер
+        "openrouter/free"
     ];
 
     let success = false;
@@ -111,17 +163,19 @@ sendMsgBtn.addEventListener('click', async () => {
                 })
             });
 
-            // Если ответ успешный
             if (response.ok) {
                 const data = await response.json();
                 if (data.choices && data.choices.length > 0) {
                     const aiReply = data.choices[0].message.content;
-                    addMessage(aiReply, 'bot');
+                    
+                    // Выводим на экран и сохраняем в БД ответ ИИ
+                    addMessageDOM(aiReply, 'bot');
+                    saveMessageToDB(user.uid, aiReply, 'bot');
+                    
                     success = true;
-                    break; // Выходим из цикла, так как получили ответ
+                    break; 
                 }
             } 
-            // Если ошибка 429 (лимит) - идем к следующей модели
             else if (response.status === 429) {
                 console.warn(`Модель ${model} перегружена (429). Пробуем следующую...`);
                 continue; 
@@ -136,9 +190,10 @@ sendMsgBtn.addEventListener('click', async () => {
         }
     }
 
-    // Если все модели выдали ошибку
     if (!success) {
-        addMessage("Извините, все бесплатные модели сейчас перегружены. Пожалуйста, подождите минуту и попробуйте снова.", 'bot');
+        const errorMsg = "Извините, все бесплатные модели сейчас перегружены. Пожалуйста, подождите минуту и попробуйте снова.";
+        addMessageDOM(errorMsg, 'bot');
+        saveMessageToDB(user.uid, errorMsg, 'bot');
     }
 });
 
