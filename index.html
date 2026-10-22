@@ -9,7 +9,7 @@
     <div class="container">
         <h1>Медицинский ассистент</h1>
 
-        <!-- Форма входа/регистрации -->
+        <!-- Форма входа -->
         <div id="auth-section">
             <h2>Вход / Регистрация</h2>
             <input type="email" id="email" placeholder="Email">
@@ -21,15 +21,34 @@
             <p id="auth-message" style="color: red;"></p>
         </div>
 
-        <!-- Личный кабинет (скрыт по умолчанию) -->
+        <!-- Личный кабинет -->
         <div id="app-section" style="display: none;">
             <h2>Личный кабинет</h2>
             <p>Вы вошли как: <span id="user-email"></span></p>
+            <!-- Сюда потом добавим форму заполнения медданных -->
             <button id="logout-btn">Выйти</button>
         </div>
     </div>
 
-    <!-- Подключаем наш JS-файл -->
+    <!-- ВСПЛЫВАЮЩИЙ ЧАТ-АССИСТЕНТ -->
+    <div id="chat-widget">
+        <button id="chat-toggle-btn">💬</button>
+        
+        <div id="chat-window" class="hidden">
+            <div class="chat-header">
+                <span>ИИ Ассистент</span>
+                <button id="close-chat-btn">✖</button>
+            </div>
+            <div id="chat-messages">
+                <div class="message bot-message">Здравствуйте! Я ваш медицинский ассистент. Чем я могу помочь? Помните, что я не заменяю врача.</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-input" placeholder="Задайте вопрос...">
+                <button id="send-msg-btn">➤</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="app.js"></script>
 </body>
 </html>
