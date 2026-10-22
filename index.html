@@ -21,11 +21,18 @@
             <p id="auth-message" style="color: red;"></p>
         </div>
 
-        <!-- Личный кабинет -->
+        <!-- Личный кабинет с медицинской картой -->
         <div id="app-section" style="display: none;">
-            <h2>Личный кабинет</h2>
-            <p>Вы вошли как: <span id="user-email"></span></p>
-            <!-- Сюда потом добавим форму заполнения медданных -->
+            <h2>Медицинская карта</h2>
+            <p style="font-size: 14px; color: gray;">Пользователь: <span id="user-email"></span></p>
+            
+            <input type="text" id="blood-type" placeholder="Группа крови (например, I+)">
+            <input type="text" id="allergies" placeholder="Аллергии (например, пенициллин)">
+            <input type="text" id="diseases" placeholder="Хронические заболевания">
+            
+            <button id="save-med-btn" style="width: 100%; margin-bottom: 10px;">Сохранить данные</button>
+            <p id="save-status" style="color: green; font-size: 14px; margin-bottom: 10px;"></p>
+            
             <button id="logout-btn">Выйти</button>
         </div>
     </div>
