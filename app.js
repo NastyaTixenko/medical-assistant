@@ -1,6 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-// Импортируем функции для работы с коллекциями (таблицами) в Firestore
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -29,9 +28,10 @@ const appSection = document.getElementById('app-section');
 const userEmailSpan = document.getElementById('user-email');
 const authMessage = document.getElementById('auth-message');
 
-// Элементы таблицы
 const patientsList = document.getElementById('patients-list');
 const pNameInput = document.getElementById('p-name');
+const pSnilsInput = document.getElementById('p-snils');
+const pDobInput = document.getElementById('p-dob');
 const pSymptomsInput = document.getElementById('p-symptoms');
 const addPatientBtn = document.getElementById('add-patient-btn');
 
@@ -54,88 +54,76 @@ onAuthStateChanged(auth, (user) => {
         appSection.style.display = 'block';
         userEmailSpan.textContent = user.email;
         emailInput.value = ""; passwordInput.value = "";
-        // Загружаем список пациентов для этого врача
         loadPatients(user.uid);
     } else {
         authSection.style.display = 'block';
         appSection.style.display = 'none';
-        patientsList.innerHTML = ''; // Очищаем таблицу при выходе
+        patientsList.innerHTML = ''; 
     }
 });
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// --- РАБОТА С ПАЦИЕНТАМИ (База данных) ---
-
-// 1. Загрузка пациентов
+// --- РАБОТА С ПАЦИЕНТАМИ ---
 async function loadPatients(doctorId) {
     patientsList.innerHTML = '';
-    // Каждый врач имеет свою папку с пациентами: doctors -> {id} -> patients
     const patientsRef = collection(db, "doctors", doctorId, "patients");
     const querySnapshot = await getDocs(patientsRef);
     
     querySnapshot.forEach((docSnap) => {
         const patient = docSnap.data();
-        addPatientToTable(docSnap.id, patient.name, patient.symptoms);
+        addPatientToTable(docSnap.id, patient.name, patient.snils, patient.dob, patient.symptoms);
     });
 }
 
-// 2. Отрисовка строки в таблице
-function addPatientToTable(id, name, symptoms) {
+function addPatientToTable(id, name, snils, dob, symptoms) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td>${name}</td>
+        <td>${snils || '-'}</td>
+        <td>${dob || '-'}</td>
         <td>${symptoms}</td>
         <td><button class="delete-btn" data-id="${id}">Удалить</button></td>
     `;
     patientsList.appendChild(tr);
 
-    // Добавляем обработчик на кнопку удаления
     tr.querySelector('.delete-btn').addEventListener('click', async (e) => {
         const patientId = e.target.getAttribute('data-id');
         await deletePatient(id, patientId);
     });
 }
 
-// 3. Добавление пациента
 addPatientBtn.addEventListener('click', async () => {
     const user = auth.currentUser;
     const name = pNameInput.value.trim();
+    const snils = pSnilsInput.value.trim();
+    const dob = pDobInput.value;
     const symptoms = pSymptomsInput.value.trim();
 
     if (!name || !symptoms) {
-        alert("Заполните ФИО и жалобы пациента!");
+        alert("Заполните хотя бы ФИО и жалобы пациента!");
         return;
     }
 
     try {
         const patientsRef = collection(db, "doctors", user.uid, "patients");
-        await addDoc(patientsRef, { name: name, symptoms: symptoms });
+        await addDoc(patientsRef, { name: name, snils: snils, dob: dob, symptoms: symptoms });
         
-        // Очищаем поля и обновляем таблицу
-        pNameInput.value = '';
-        pSymptomsInput.value = '';
+        pNameInput.value = ''; pSnilsInput.value = ''; pDobInput.value = ''; pSymptomsInput.value = '';
         loadPatients(user.uid);
-    } catch (error) {
-        console.error("Ошибка добавления:", error);
-        alert("Не удалось добавить пациента.");
-    }
+    } catch (error) { console.error(error); }
 });
 
-// 4. Удаление пациента
 async function deletePatient(doctorId, patientId) {
-    if(!confirm("Вы уверены, что хотите удалить запись пациента?")) return;
-    
+    if(!confirm("Удалить запись пациента?")) return;
     try {
         await deleteDoc(doc(db, "doctors", doctorId, "patients", patientId));
-        loadPatients(doctorId); // Обновляем таблицу
-    } catch (error) {
-        console.error("Ошибка удаления:", error);
-    }
+        loadPatients(doctorId); 
+    } catch (error) { console.error(error); }
 }
 
 
-// --- ЛОГИКА ИИ ЧАТА (Остается без изменений) ---
+// --- ЛОГИКА ИИ ЧАТА С КОНТЕКСТОМ БАЗЫ ДАННЫХ ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -154,17 +142,46 @@ function addMessageDOM(text, sender) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// Функция, которая выгружает базу пациентов в текст для ИИ
+async function getPatientsContext(doctorId) {
+    const patientsRef = collection(db, "doctors", doctorId, "patients");
+    const querySnapshot = await getDocs(patientsRef);
+    
+    if (querySnapshot.empty) return "База пациентов пуста.";
+
+    let context = "Список пациентов в базе врача:\n";
+    querySnapshot.forEach((docSnap) => {
+        const p = docSnap.data();
+        context += `- ФИО: ${p.name}, СНИЛС: ${p.snils || 'нет'}, Дата рождения: ${p.dob || 'нет'}, Жалобы: ${p.symptoms}\n`;
+    });
+    return context;
+}
+
 sendMsgBtn.addEventListener('click', async () => {
     const text = chatInput.value.trim();
     if (!text) return;
+    const user = auth.currentUser;
+    if (!user) return;
 
     addMessageDOM(text, 'user');
     chatInput.value = '';
 
+    // Показываем индикатор загрузки, пока ИИ думает
+    addMessageDOM("Анализирую базу данных...", 'bot');
+
+    // 1. Получаем данные всех пациентов из Firebase
+    const patientsInfo = await getPatientsContext(user.uid);
+
+    // 2. Формируем системный промпт (управление для ИИ)
+    const systemPrompt = `Ты — умный ассистент для врача. Ты помогаешь врачу анализировать симптомы пациентов. 
+Вот текущая база пациентов этого врача:
+${patientsInfo}
+
+Если врач спрашивает про конкретного пациента, найди его в списке выше и используй его жалобы для анализа. Общайся профессионально.`;
+
     const freeModels = [
         "google/gemma-2-9b-it:free",
         "meta-llama/llama-3-8b-instruct:free",
-        "mistralai/mistral-7b-instruct:free",
         "openrouter/free"
     ];
 
@@ -181,7 +198,7 @@ sendMsgBtn.addEventListener('click', async () => {
                 body: JSON.stringify({
                     model: model,
                     messages: [
-                        { role: "system", content: "Ты — умный ассистент для врача. Ты помогаешь врачу анализировать симптомы пациентов, предлагаешь возможные предварительные диагнозы и рекомендуешь, какие анализы сдать. Ты общаешься с профессионалом, поэтому можешь использовать медицинские термины." },
+                        { role: "system", content: systemPrompt },
                         { role: "user", content: text }
                     ]
                 })
@@ -190,6 +207,9 @@ sendMsgBtn.addEventListener('click', async () => {
             if (response.ok) {
                 const data = await response.json();
                 if (data.choices && data.choices.length > 0) {
+                    // Удаляем сообщение "Анализирую..."
+                    chatMessages.removeChild(chatMessages.lastChild);
+                    // Добавляем реальный ответ
                     addMessageDOM(data.choices[0].message.content, 'bot');
                     success = true;
                     break; 
@@ -199,6 +219,7 @@ sendMsgBtn.addEventListener('click', async () => {
     }
 
     if (!success) {
+        chatMessages.removeChild(chatMessages.lastChild);
         addMessageDOM("Все бесплатные модели сейчас перегружены. Подождите минуту.", 'bot');
     }
 });
