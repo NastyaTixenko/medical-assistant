@@ -22,8 +22,8 @@ const CLOUDINARY_CLOUD_NAME = "rjdmw1u";
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
 
-// ВАШ НОВЫЙ АДРЕС ПРОКСИ НА CLOUDFLARE PAGES
-const PROXY_URL = "https://med-ai-gigachat-proxy.pages.dev"; 
+// ВАШ НОВЫЙ АДРЕС ПРОКСИ НА DENO DEPLOY
+const PROXY_URL = "https://numb-mule-4536.nastyatixenko.deno.net"; 
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
