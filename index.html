@@ -28,26 +28,34 @@
                 <button id="logout-btn">Выйти</button>
             </div>
 
-            <h3>Список пациентов</h3>
+            <h3>База пациентов</h3>
             
             <!-- Таблица пациентов -->
-            <table id="patients-table">
-                <thead>
-                    <tr>
-                        <th>ФИО</th>
-                        <th>Жалобы</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="patients-list">
-                    <!-- Сюда будут загружаться пациенты -->
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table id="patients-table">
+                    <thead>
+                        <tr>
+                            <th>ФИО</th>
+                            <th>СНИЛС</th>
+                            <th>Дата рожд.</th>
+                            <th>Жалобы</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patients-list">
+                        <!-- Сюда будут загружаться пациенты -->
+                    </tbody>
+                </table>
+            </div>
 
             <!-- Форма добавления пациента -->
             <div class="add-patient-form">
-                <h4>Добавить пациента</h4>
+                <h4>Добавить пациента в базу</h4>
                 <input type="text" id="p-name" placeholder="ФИО пациента">
+                <div class="input-row">
+                    <input type="text" id="p-snils" placeholder="СНИЛС (11 цифр)">
+                    <input type="date" id="p-dob" placeholder="Дата рождения">
+                </div>
                 <input type="text" id="p-symptoms" placeholder="Основные жалобы (симптомы)">
                 <button id="add-patient-btn">Добавить в базу</button>
             </div>
@@ -64,7 +72,7 @@
                 <button id="close-chat-btn">✖</button>
             </div>
             <div id="chat-messages">
-                <div class="message bot-message">Здравствуйте, доктор! Я могу помочь вам с предварительной оценкой симптомов. Задайте вопрос по пациенту.</div>
+                <div class="message bot-message">Здравствуйте, доктор! Я вижу вашу базу пациентов. Спросите меня о любом из них, и я помогу с анализом симптомов.</div>
             </div>
             <div class="chat-input-area">
                 <input type="text" id="chat-input" placeholder="Задайте вопрос...">
