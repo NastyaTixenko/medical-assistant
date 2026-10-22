@@ -17,25 +17,17 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- НАСТРОЙКИ CLOUDINARY И ИИ ---
+// --- НАСТРОЙКИ CLOUDINARY И ПРОКСИ GIGACHAT ---
 const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; 
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
-const OPENROUTER_API_KEY = "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"; 
-
-const FREE_MODELS = [
-    "google/gemma-4-31b-it:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "qwen/qwen3-coder:free",
-    "openrouter/free"
-];
+const PROXY_URL = "https://gigachat-proxy.ldwiamanchik.workers.dev"; // Твой прокси GigaChat
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
 let currentModalPatientId = null;
 
-// --- УТИЛИТЫ ---
+// --- УТИЛИТЫ (Уведомления и Модалки) ---
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -56,27 +48,37 @@ function showConfirm(text, onConfirm) {
     noBtn.onclick = close;
 }
 
+// --- ФУНКЦИЯ ОБЩЕНИЯ С GIGACHAT (ЧЕРЕЗ ПРОКСИ) ---
 async function callAI(messages, temperature = 0.7) {
-    let lastError = null;
-    for (const model of FREE_MODELS) {
-        try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ model, messages, temperature })
-            });
-            if (response.ok) {
-                const data = await response.json();
-                if (data.choices && data.choices.length > 0) {
-                    return data.choices[0].message.content;
-                }
-            }
-        } catch (e) {
-            console.error(`Ошибка сети для модели ${model}:`, e);
-            lastError = e;
+    try {
+        const response = await fetch(PROXY_URL, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json" 
+            },
+            body: JSON.stringify({ 
+                model: "GigaChat",
+                messages: messages,
+                temperature: temperature,
+                stream: false
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Ошибка сервера: ${response.status}`);
         }
+
+        const data = await response.json();
+        if (data.choices && data.choices.length > 0) {
+            return data.choices[0].message.content;
+        } else {
+            throw new Error("Пустой ответ от GigaChat");
+        }
+    } catch (error) {
+        console.error("Ошибка GigaChat:", error);
+        throw error;
     }
-    throw lastError || new Error("Не удалось получить ответ ни от одной из доступных моделей.");
 }
 
 // --- АВТОРИЗАЦИЯ ---
@@ -145,7 +147,7 @@ document.getElementById('save-profile-btn').addEventListener('click', async () =
     showToast("Профиль успешно обновлен");
 });
 
-// --- ЗАГРУЗКА ФОТО ---
+// --- ЗАГРУЗКА ФОТО ЧЕРЕЗ CLOUDINARY ---
 document.getElementById('avatar-upload').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -281,7 +283,7 @@ window.deleteSchedule = (id) => {
     });
 };
 
-// --- МОДАЛКА ПАЦИЕНТА ---
+// --- МОДАЛКА ПАЦИЕНТА И ГЕНЕРАЦИЯ НАЗНАЧЕНИЙ ---
 window.openPatientModal = (id) => {
     const p = currentPatients.find(x => x.id === id);
     if (!p) return;
@@ -321,7 +323,7 @@ document.getElementById('save-prescription-btn').addEventListener('click', async
     loadPatients(auth.currentUser.uid);
 });
 
-// --- ЧАТ-АССИСТЕНТ (ИСПРАВЛЕННЫЙ) ---
+// --- ЧАТ-АССИСТЕНТ ---
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 const closeChatBtn = document.getElementById('close-chat-btn');
 const chatWindow = document.getElementById('chat-window');
@@ -348,7 +350,6 @@ sendMsgBtn.onclick = async () => {
     chatInput.value = '';
     addChatMessage("Анализирую...", 'bot');
 
-    // Формируем максимально понятный контекст для ИИ
     let context = "--- СПИСОК ПАЦИЕНТОВ ---\n";
     currentPatients.forEach(p => {
         context += `ФИО: ${p.name} | Жалобы: ${p.symptoms}\n`;
@@ -361,7 +362,6 @@ sendMsgBtn.onclick = async () => {
         context += `Дата: ${data.date} | Время: ${data.time} | ФИО пациента: ${data.patientName} | Причина: ${data.reason || 'не указана'}\n`;
     });
 
-    // Жесткая инструкция для ИИ
     const sysPrompt = `Ты — умный медицинский ассистент. Ты общаешься с ВРАЧОМ (не с пациентом). 
 Твоя задача — помогать врачу с его расписанием и базой пациентов.
 ВАЖНОЕ ПРАВИЛО: Когда ты говоришь о приеме или карточке, ты ОБЯЗАН четко указывать ФИО пациента, о котором идет речь. Никогда не пиши "в вашей карточке", пиши "в карточке пациента [ФИО]".
