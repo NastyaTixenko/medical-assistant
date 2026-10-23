@@ -15,13 +15,15 @@ body { background-color: var(--bg); color: var(--text-main); }
 .mt-10 { margin-top: 10px; }
 
 input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; outline: none; transition: 0.2s; }
-input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
 
+/* Авторизация */
 .auth-wrapper { height: 100vh; display: flex; align-items: center; justify-content: center; }
 .auth-box { background: var(--surface); padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 15px; }
 .auth-title { text-align: center; margin-bottom: 10px; font-size: 24px; }
 #auth-message { text-align: center; font-size: 14px; color: var(--danger); margin-top: 10px; }
 
+/* Макет */
 .app-layout { display: flex; height: 100vh; }
 .sidebar { width: 250px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; }
 .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); }
@@ -37,36 +39,45 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
 
+/* Таблицы */
 .table-container { background: var(--surface); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; margin-bottom: 25px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 15px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
 th { background: #f8fafc; font-weight: 600; color: var(--text-muted); }
+tr:last-child td { border-bottom: none; }
 .action-link { color: var(--primary); cursor: pointer; text-decoration: none; margin-right: 15px; font-weight: 500; }
+.action-link:hover { text-decoration: underline; }
 .action-link.danger { color: var(--danger); }
 
+/* Формы */
 .form-card, .patient-form-card { background: var(--surface); padding: 20px; border-radius: 8px; border: 1px solid var(--border); }
+.form-card h3, .patient-form-card h3 { margin-bottom: 15px; font-size: 16px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
 
+/* Профиль */
 .profile-layout { display: flex; gap: 30px; }
 .profile-avatar-card { background: var(--surface); padding: 30px; border-radius: 8px; border: 1px solid var(--border); text-align: center; width: 300px; }
 #profile-avatar-img { width: 150px; height: 150px; border-radius: 50%; object-fit: cover; margin-bottom: 20px; border: 3px solid var(--border); }
+.upload-label { display: inline-block; margin-bottom: 15px; cursor: pointer; }
+.reg-date { font-size: 13px; color: var(--text-muted); }
 .profile-form-card { background: var(--surface); padding: 30px; border-radius: 8px; border: 1px solid var(--border); flex: 1; }
 .form-group { margin-bottom: 20px; }
 .form-group label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: var(--text-muted); }
 
+/* Пациент */
 .patient-welcome { max-width: 800px; margin: 40px auto; text-align: center; }
 .patient-welcome h1 { color: var(--primary); margin-bottom: 20px; }
-.patient-welcome p { color: var(--text-muted); margin-bottom: 10px; }
+.patient-welcome p { color: var(--text-muted); margin-bottom: 10px; line-height: 1.5; }
 .patient-form-card { margin-top: 30px; text-align: left; }
 
-/* УВЕДОМЛЕНИЯ */
+/* Уведомления */
 #toast-container { position: fixed; top: 20px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; }
 .toast { padding: 15px 20px; border-radius: 6px; color: white; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease-out; }
 .toast.success { background: var(--success); }
 .toast.error { background: var(--danger); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-/* ЧАТ (Единый стиль для всех ролей) */
+/* Чат */
 .chat-widget-container { position: fixed !important; bottom: 20px !important; right: 20px !important; z-index: 9999 !important; }
 .chat-toggle { padding: 12px 20px; border-radius: 30px; background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(37,99,235,0.3); transition: 0.2s; }
 .chat-toggle:hover { background: var(--primary-hover); transform: translateY(-2px); }
@@ -81,3 +92,15 @@ th { background: #f8fafc; font-weight: 600; color: var(--text-muted); }
 .chat-input-area { display: flex; padding: 10px; background: white; border-top: 1px solid var(--border); gap: 10px; }
 .chat-input-area input { margin: 0; border-radius: 20px; }
 .chat-input-area button { border-radius: 20px; padding: 0 15px; background: var(--primary); color: white; border: none; cursor: pointer; }
+
+/* Модальное окно */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; opacity: 0; pointer-events: none; transition: 0.3s; }
+.modal-overlay.active { opacity: 1; pointer-events: all; }
+.modal-content { background: var(--surface); border-radius: 12px; width: 100%; max-width: 500px; padding: 25px; transform: translateY(-20px); transition: 0.3s; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+.modal-overlay.active .modal-content { transform: translateY(0); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+.close-modal-btn { background: transparent; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted); }
+.modal-body p { margin-bottom: 15px; font-size: 14px; }
+.ai-prescription-box { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border); }
+.ai-prescription-box h4 { margin-bottom: 10px; }
+.ai-prescription-box textarea { width: 100%; height: 120px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; resize: vertical; font-family: inherit; font-size: 14px; }
