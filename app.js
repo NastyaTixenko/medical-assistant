@@ -244,9 +244,10 @@ async function loadRequests() {
     snap.forEach(d => {
         const r = d.data();
         const tr = document.createElement('tr');
+        // Передаем r.patientId в функцию acceptRequest
         tr.innerHTML = `
             <td>${r.fullName}</td><td>${r.dob}</td><td>${r.snils}</td><td>${r.city}</td><td>${r.reason}</td>
-            <td><button class="btn btn-primary" onclick="acceptRequest('${d.id}', '${r.fullName}', '${r.reason}')">Принять</button></td>
+            <td><button class="btn btn-primary" onclick="acceptRequest('${d.id}', '${r.patientId}', '${r.fullName}', '${r.reason}')">Принять</button></td>
         `;
         tbody.appendChild(tr);
     });
