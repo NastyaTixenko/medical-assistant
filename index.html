@@ -73,6 +73,7 @@
             </nav>
         </aside>
         <main class="main-content">
+            <!-- Вкладка: Пациенты -->
             <section id="view-patients" class="view-section active-view">
                 <div class="section-header"><h2>База пациентов</h2></div>
                 <div class="table-container">
@@ -92,6 +93,8 @@
                     <button id="add-patient-btn" class="btn btn-primary">Добавить в базу</button>
                 </div>
             </section>
+
+            <!-- Вкладка: Расписание -->
             <section id="view-schedule" class="view-section">
                 <div class="section-header"><h2>Расписание приемов</h2></div>
                 <div class="table-container">
@@ -111,6 +114,8 @@
                     <button id="add-schedule-btn" class="btn btn-primary">Записать на прием</button>
                 </div>
             </section>
+
+            <!-- Вкладка: Заявки -->
             <section id="view-requests" class="view-section">
                 <div class="section-header"><h2>Новые заявки от пациентов</h2></div>
                 <div class="table-container">
@@ -120,6 +125,8 @@
                     </table>
                 </div>
             </section>
+
+            <!-- Вкладка: Профиль -->
             <section id="view-profile" class="view-section">
                 <div class="section-header"><h2>Профиль врача</h2></div>
                 <div class="profile-layout">
@@ -203,7 +210,31 @@
         </div>
     </div>
 
+    <!-- МОДАЛЬНОЕ ОКНО КАРТЫ ПАЦИЕНТА (Для врача) -->
+    <div id="patient-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-patient-name">Карта пациента</h3>
+                <button class="close-modal-btn" onclick="closePatientModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Жалобы:</strong> <span id="modal-patient-symptoms"></span></p>
+                
+                <div class="ai-prescription-box">
+                    <h4>Назначение врача (ИИ)</h4>
+                    <textarea id="ai-prescription-text" placeholder="Нажмите кнопку ниже, чтобы сгенерировать план лечения..."></textarea>
+                    <div style="display:flex; gap: 10px; margin-top: 10px;">
+                        <button id="generate-prescription-btn" class="btn btn-primary">Сгенерировать через ИИ</button>
+                        <button id="save-prescription-btn" class="btn btn-secondary">Сохранить в карту</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Уведомления -->
     <div id="toast-container"></div>
+
     <script type="module" src="app.js"></script>
 </body>
 </html>
