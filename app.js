@@ -253,11 +253,19 @@ async function loadRequests() {
     });
 }
 
-window.acceptRequest = async (id, name, reason) => {
-    await addDoc(collection(db, "doctors", auth.currentUser.uid, "patients"), { name, symptoms: reason });
-    await updateDoc(doc(db, "requests", id), { status: 'accepted', doctorId: auth.currentUser.uid });
+window.acceptRequest = async (reqId, patientId, name, reason) => {
+    // Сохраняем пациента в базу врача вместе с его ID
+    await addDoc(collection(db, "doctors", auth.currentUser.uid, "patients"), { 
+        patientId: patientId, 
+        name: name, 
+        symptoms: reason 
+    });
+    
+    // Обновляем статус заявки
+    await updateDoc(doc(db, "requests", reqId), { status: 'accepted', doctorId: auth.currentUser.uid });
     showToast("Пациент добавлен в базу");
-    loadRequests(); loadPatients(auth.currentUser.uid);
+    loadRequests(); 
+    loadPatients(auth.currentUser.uid);
 };
 
 async function loadPatients(doctorId) {
@@ -364,10 +372,46 @@ async function loadAdminRequests() {
     });
 }
 
-window.adminDeleteUser = async (id) => {
-    if(confirm("Удалить пользователя навсегда?")) {
-        await deleteDoc(doc(db, "users", id));
-        loadAdminUsers();
+window.adminDeleteUser = async (userId) => {
+    if(!confirm("Удалить пользователя и ВСЕ его данные (заявки, записи к врачам) навсегда?")) return;
+
+    try {
+        // 1. Удаляем сам аккаунт пользователя
+        await deleteDoc(doc(db, "users", userId));
+
+        // 2. Удаляем все его заявки на прием
+        const reqQuery = query(collection(db, "requests"), where("patientId", "==", userId));
+        const reqSnap = await getDocs(reqQuery);
+        reqSnap.forEach(async (reqDoc) => {
+            await deleteDoc(doc(db, "requests", reqDoc.id));
+        });
+
+        // 3. Ищем его в базах ВСЕХ врачей и удаляем
+        const doctorsSnap = await getDocs(collection(db, "doctors"));
+        doctorsSnap.forEach(async (docDoc) => {
+            const docId = docDoc.id;
+
+            // 3.1. Удаляем из списка пациентов врача
+            const patQuery = query(collection(db, "doctors", docId, "patients"), where("patientId", "==", userId));
+            const patSnap = await getDocs(patQuery);
+            patSnap.forEach(async (pDoc) => {
+                await deleteDoc(doc(db, "doctors", docId, "patients", pDoc.id));
+            });
+
+            // 3.2. Удаляем из расписания врача
+            const schedQuery = query(collection(db, "doctors", docId, "schedule"), where("patientId", "==", userId));
+            const schedSnap = await getDocs(schedQuery);
+            schedSnap.forEach(async (sDoc) => {
+                await deleteDoc(doc(db, "doctors", docId, "schedule", sDoc.id));
+            });
+        });
+
+        showToast("Пользователь и все его данные удалены");
+        loadAdminUsers(); // Обновляем таблицу админа
+        
+    } catch (e) {
+        console.error("Ошибка каскадного удаления:", e);
+        showToast("Ошибка при удалении данных", "error");
     }
 };
 
