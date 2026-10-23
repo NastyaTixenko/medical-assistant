@@ -111,6 +111,11 @@ onAuthStateChanged(auth, async (user) => {
                 admSec.style.display = 'flex';
                 loadAdminData();
             }
+        } else {
+            // Если пользователь есть в Auth, но нет в базе ролей (старый аккаунт)
+            // Принудительно выходим, чтобы он зарегистрировался заново с ролью
+            await signOut(auth);
+            alert("Ваш аккаунт устарел. Пожалуйста, зарегистрируйтесь заново, чтобы получить новую роль.");
         }
     } else {
         authSec.style.display = 'flex';
