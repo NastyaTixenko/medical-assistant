@@ -20,13 +20,21 @@ const CLOUDINARY_CLOUD_NAME = "rjdmw1u";
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
-const FREE_MODELS = ["google/gemma-2-9b-it:free", "meta-llama/llama-3-8b-instruct:free", "openrouter/free"];
+
+// Обновил список моделей на актуальные бесплатные
+const FREE_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemma-3-27b-it:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+    "openrouter/free"
+];
 
 const KEY_DOCTOR = "DOCTOR2026";
 const KEY_ADMIN = "ADMIN2026";
 
 let currentPatients = [];
-let isRegistering = false; // Защита от мигания при регистрации
+let currentSchedule = []; // Будем хранить расписание для контекста ИИ
+let isRegistering = false;
 
 // --- УТИЛИТЫ ---
 function showToast(msg, type = 'success') {
@@ -42,16 +50,28 @@ async function callAI(messages) {
     for (const model of FREE_MODELS) {
         try {
             const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST", headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ model, messages })
+                method: "POST", 
+                headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    model: model, 
+                    messages: messages,
+                    temperature: 0.5 // Снижаем температуру для более точных ответов по базе
+                })
             });
             if (res.ok) {
                 const data = await res.json();
-                if (data.choices?.length > 0) return data.choices[0].message.content;
+                if (data.choices && data.choices.length > 0) {
+                    return data.choices[0].message.content;
+                }
+            } else {
+                console.warn(`Модель ${model} недоступна (код ${res.status})`);
             }
-        } catch (e) { continue; }
+        } catch (e) { 
+            console.error(`Сетевая ошибка (${model}):`, e);
+            continue; 
+        }
     }
-    throw new Error("VPN не включен или все модели перегружены.");
+    throw new Error("Не удалось получить ответ. Проверьте VPN или попробуйте позже.");
 }
 
 // --- РЕГИСТРАЦИЯ И ВХОД ---
@@ -66,12 +86,11 @@ document.getElementById('signup-btn').addEventListener('click', async () => {
     if (key === KEY_ADMIN) role = 'admin';
 
     try {
-        isRegistering = true; // Включаем блокировку
+        isRegistering = true;
         msg.textContent = "Создание аккаунта..."; msg.style.color = "gray";
         
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
         
-        // Сначала сохраняем роль в базу
         await setDoc(doc(db, "users", userCred.user.uid), {
             email: email,
             role: role,
@@ -79,8 +98,6 @@ document.getElementById('signup-btn').addEventListener('click', async () => {
         });
         
         msg.textContent = "Успех! Загрузка..."; msg.style.color = "green";
-        
-        // Перезагружаем страницу, чтобы приложение загрузилось уже с новой ролью
         setTimeout(() => window.location.reload(), 1000); 
 
     } catch (e) {
@@ -95,9 +112,9 @@ document.getElementById('login-btn').addEventListener('click', () => {
         .catch(e => document.getElementById('auth-message').textContent = "Ошибка: " + e.message);
 });
 
-// --- ГЛАВНЫЙ МАРШРУТИЗАТОР (По ролям) ---
+// --- МАРШРУТИЗАТОР ---
 onAuthStateChanged(auth, async (user) => {
-    if (isRegistering) return; // Если идет процесс регистрации, не вмешиваемся
+    if (isRegistering) return; 
 
     const authSec = document.getElementById('auth-section');
     const patSec = document.getElementById('patient-section');
@@ -105,7 +122,7 @@ onAuthStateChanged(auth, async (user) => {
     const admSec = document.getElementById('admin-section');
 
     if (user) {
-        authSec.style.display = 'none'; // Прячем форму входа
+        authSec.style.display = 'none';
         try {
             const userDoc = await getDoc(doc(db, "users", user.uid));
             
@@ -119,28 +136,21 @@ onAuthStateChanged(auth, async (user) => {
                 } else if (role === 'admin') {
                     admSec.style.display = 'flex';
                     loadAdminData();
-                } else {
-                    // Если роль неизвестна
-                    authSec.style.display = 'flex';
                 }
             } else {
-                // Если аккаунт старый (без роли), разлогиниваем
                 await signOut(auth);
-                alert("Ваш аккаунт устарел. Пожалуйста, зарегистрируйтесь заново.");
+                alert("Аккаунт устарел. Зарегистрируйтесь заново.");
             }
         } catch (error) {
-            console.error("Ошибка базы:", error);
-            authSec.style.display = 'flex'; // В случае ошибки показываем вход
+            authSec.style.display = 'flex'; 
         }
     } else {
-        // Если вышел из аккаунта
         authSec.style.display = 'flex';
         patSec.style.display = 'none';
         docSec.style.display = 'none';
         admSec.style.display = 'none';
     }
 });
-
 
 // --- ЛОГИКА ПАЦИЕНТА ---
 document.getElementById('submit-request-btn').addEventListener('click', async () => {
@@ -168,16 +178,14 @@ document.getElementById('submit-request-btn').addEventListener('click', async ()
 
 document.getElementById('patient-logout-btn').addEventListener('click', () => signOut(auth));
 
-
 // --- ЛОГИКА ВРАЧА ---
-function loadDoctorData(uid) {
-    loadProfile(uid);
-    loadPatients(uid);
-    loadSchedule(uid);
-    loadRequests();
+async function loadDoctorData(uid) {
+    await loadProfile(uid);
+    await loadPatients(uid);
+    await loadSchedule(uid);
+    await loadRequests();
 }
 
-// Вкладки врача
 document.querySelectorAll('#doctor-section .nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('#doctor-section .nav-btn').forEach(b => b.classList.remove('active'));
@@ -297,12 +305,19 @@ document.getElementById('add-schedule-btn').addEventListener('click', async () =
 });
 
 async function loadSchedule(doctorId) {
+    currentSchedule = []; // Очищаем и заполняем заново
     const tbody = document.getElementById('schedule-list');
     tbody.innerHTML = '';
     const snap = await getDocs(collection(db, "doctors", doctorId, "schedule"));
-    snap.forEach(d => {
-        const s = d.data();
-        tbody.innerHTML += `<tr><td>${s.date}</td><td>${s.time}</td><td>${s.patientName}</td><td>${s.reason || '-'}</td><td><span class="action-link danger" onclick="deleteSchedule('${d.id}')">Отменить</span></td></tr>`;
+    
+    // Сортируем по дате
+    let schedArray = [];
+    snap.forEach(d => schedArray.push({ id: d.id, ...d.data() }));
+    schedArray.sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time));
+    
+    schedArray.forEach(s => {
+        currentSchedule.push(s); // Сохраняем в глобальную переменную для ИИ
+        tbody.innerHTML += `<tr><td>${s.date}</td><td>${s.time}</td><td>${s.patientName}</td><td>${s.reason || '-'}</td><td><span class="action-link danger" onclick="deleteSchedule('${s.id}')">Отменить</span></td></tr>`;
     });
 }
 
@@ -312,7 +327,6 @@ window.deleteSchedule = async (id) => {
 };
 
 document.getElementById('doctor-logout-btn').addEventListener('click', () => signOut(auth));
-
 
 // --- ЛОГИКА АДМИНА ---
 async function loadAdminData() {
@@ -358,8 +372,8 @@ window.adminDeleteUser = async (id) => {
 
 document.getElementById('admin-logout-btn').addEventListener('click', () => signOut(auth));
 
-
-// --- ЧАТЫ (Пациент и Врач) ---
+// --- ЧАТЫ ---
+// Пациент
 document.getElementById('chat-toggle-btn').onclick = () => document.getElementById('chat-window').classList.remove('hidden');
 document.getElementById('close-chat-btn').onclick = () => document.getElementById('chat-window').classList.add('hidden');
 
@@ -378,10 +392,11 @@ document.getElementById('send-msg-btn').onclick = async () => {
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`;
     } catch(e) {
         msgs.lastChild.remove();
-        msgs.innerHTML += `<div class="message bot-message">Включите VPN для работы ИИ.</div>`;
+        msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`;
     }
 };
 
+// Врач
 document.getElementById('chat-toggle-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.remove('hidden');
 document.getElementById('close-chat-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.add('hidden');
 
@@ -394,15 +409,45 @@ document.getElementById('send-msg-btn-doc').onclick = async () => {
     const text = input.value; input.value = '';
     msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
 
-    let context = "Пациенты:\n";
-    currentPatients.forEach(p => context += `- ${p.name} (${p.symptoms})\n`);
+    // Собираем контекст пациентов
+    let context = "СПИСОК ПАЦИЕНТОВ:\n";
+    currentPatients.forEach(p => context += `- ${p.name} (Жалобы: ${p.symptoms})\n`);
+    
+    // Собираем контекст расписания
+    context += "\nРАСПИСАНИЕ ПРИЕМОВ:\n";
+    currentSchedule.forEach(s => context += `- Дата: ${s.date}, Время: ${s.time}, Пациент: ${s.patientName}, Причина: ${s.reason}\n`);
+
+    const sysPrompt = `Ты ассистент врача. Ты общаешься с врачом. Обязательно используй данные из этой базы для ответа:\n${context}`;
 
     try {
-        const reply = await callAI([{ role: "system", content: `Ты ассистент врача. Данные: ${context}` }, { role: "user", content: text }]);
+        const reply = await callAI([{ role: "system", content: sysPrompt }, { role: "user", content: text }]);
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`;
     } catch(e) {
         msgs.lastChild.remove();
-        msgs.innerHTML += `<div class="message bot-message">Включите VPN для работы ИИ.</div>`;
+        msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`;
+    }
+};
+
+// Админ
+document.getElementById('chat-toggle-btn-adm').onclick = () => document.getElementById('chat-window-adm').classList.remove('hidden');
+document.getElementById('close-chat-btn-adm').onclick = () => document.getElementById('chat-window-adm').classList.add('hidden');
+
+document.getElementById('send-msg-btn-adm').onclick = async () => {
+    const input = document.getElementById('chat-input-adm');
+    const msgs = document.getElementById('chat-messages-adm');
+    if(!input.value) return;
+
+    msgs.innerHTML += `<div class="message user-message">${input.value}</div>`;
+    const text = input.value; input.value = '';
+    msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
+
+    try {
+        const reply = await callAI([{ role: "system", content: "Ты помощник администратора медицинской системы." }, { role: "user", content: text }]);
+        msgs.lastChild.remove();
+        msgs.innerHTML += `<div class="message bot-message">${reply}</div>`;
+    } catch(e) {
+        msgs.lastChild.remove();
+        msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`;
     }
 };
