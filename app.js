@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc, query, where, arrayUnion } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBp8WY8Q63pXT4tpb5_gUJCK54wbU4SnbQ",
@@ -22,13 +22,11 @@ const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
 const FREE_MODELS = ["google/gemma-2-9b-it:free", "meta-llama/llama-3-8b-instruct:free", "openrouter/free"];
 
-// СЕКРЕТНЫЕ КЛЮЧИ ДЛЯ РЕГИСТРАЦИИ
 const KEY_DOCTOR = "DOCTOR2026";
 const KEY_ADMIN = "ADMIN2026";
 
 let currentPatients = [];
-let currentRequests = [];
-let currentModalPatientId = null;
+let isRegistering = false; // Защита от мигания при регистрации
 
 // --- УТИЛИТЫ ---
 function showToast(msg, type = 'success') {
@@ -56,7 +54,7 @@ async function callAI(messages) {
     throw new Error("VPN не включен или все модели перегружены.");
 }
 
-// --- АВТОРИЗАЦИЯ ---
+// --- РЕГИСТРАЦИЯ И ВХОД ---
 document.getElementById('signup-btn').addEventListener('click', async () => {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
@@ -68,16 +66,25 @@ document.getElementById('signup-btn').addEventListener('click', async () => {
     if (key === KEY_ADMIN) role = 'admin';
 
     try {
+        isRegistering = true; // Включаем блокировку
+        msg.textContent = "Создание аккаунта..."; msg.style.color = "gray";
+        
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        // Сохраняем роль в БД
+        
+        // Сначала сохраняем роль в базу
         await setDoc(doc(db, "users", userCred.user.uid), {
             email: email,
             role: role,
             registrationDate: new Date().toLocaleDateString('ru-RU')
         });
-        msg.textContent = "Регистрация успешна!";
-        msg.style.color = "green";
+        
+        msg.textContent = "Успех! Загрузка..."; msg.style.color = "green";
+        
+        // Перезагружаем страницу, чтобы приложение загрузилось уже с новой ролью
+        setTimeout(() => window.location.reload(), 1000); 
+
     } catch (e) {
+        isRegistering = false;
         msg.textContent = "Ошибка: " + e.message;
         msg.style.color = "red";
     }
@@ -88,42 +95,52 @@ document.getElementById('login-btn').addEventListener('click', () => {
         .catch(e => document.getElementById('auth-message').textContent = "Ошибка: " + e.message);
 });
 
-// --- МАРШРУТИЗАЦИЯ ПО РОЛЯМ ---
+// --- ГЛАВНЫЙ МАРШРУТИЗАТОР (По ролям) ---
 onAuthStateChanged(auth, async (user) => {
+    if (isRegistering) return; // Если идет процесс регистрации, не вмешиваемся
+
     const authSec = document.getElementById('auth-section');
     const patSec = document.getElementById('patient-section');
     const docSec = document.getElementById('doctor-section');
     const admSec = document.getElementById('admin-section');
 
     if (user) {
-        authSec.style.display = 'none';
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        
-        if (userDoc.exists()) {
-            const role = userDoc.data().role;
-            if (role === 'patient') {
-                patSec.style.display = 'block';
-                loadPatientChat(user.uid);
-            } else if (role === 'doctor') {
-                docSec.style.display = 'flex';
-                loadDoctorData(user.uid);
-            } else if (role === 'admin') {
-                admSec.style.display = 'flex';
-                loadAdminData();
+        authSec.style.display = 'none'; // Прячем форму входа
+        try {
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            
+            if (userDoc.exists()) {
+                const role = userDoc.data().role;
+                if (role === 'patient') {
+                    patSec.style.display = 'block';
+                } else if (role === 'doctor') {
+                    docSec.style.display = 'flex';
+                    loadDoctorData(user.uid);
+                } else if (role === 'admin') {
+                    admSec.style.display = 'flex';
+                    loadAdminData();
+                } else {
+                    // Если роль неизвестна
+                    authSec.style.display = 'flex';
+                }
+            } else {
+                // Если аккаунт старый (без роли), разлогиниваем
+                await signOut(auth);
+                alert("Ваш аккаунт устарел. Пожалуйста, зарегистрируйтесь заново.");
             }
-        } else {
-            // Если пользователь есть в Auth, но нет в базе ролей (старый аккаунт)
-            // Принудительно выходим, чтобы он зарегистрировался заново с ролью
-            await signOut(auth);
-            alert("Ваш аккаунт устарел. Пожалуйста, зарегистрируйтесь заново, чтобы получить новую роль.");
+        } catch (error) {
+            console.error("Ошибка базы:", error);
+            authSec.style.display = 'flex'; // В случае ошибки показываем вход
         }
     } else {
+        // Если вышел из аккаунта
         authSec.style.display = 'flex';
         patSec.style.display = 'none';
         docSec.style.display = 'none';
         admSec.style.display = 'none';
     }
 });
+
 
 // --- ЛОГИКА ПАЦИЕНТА ---
 document.getElementById('submit-request-btn').addEventListener('click', async () => {
@@ -151,6 +168,7 @@ document.getElementById('submit-request-btn').addEventListener('click', async ()
 
 document.getElementById('patient-logout-btn').addEventListener('click', () => signOut(auth));
 
+
 // --- ЛОГИКА ВРАЧА ---
 function loadDoctorData(uid) {
     loadProfile(uid);
@@ -159,7 +177,7 @@ function loadDoctorData(uid) {
     loadRequests();
 }
 
-// Вкладки
+// Вкладки врача
 document.querySelectorAll('#doctor-section .nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('#doctor-section .nav-btn').forEach(b => b.classList.remove('active'));
@@ -227,15 +245,12 @@ async function loadRequests() {
 }
 
 window.acceptRequest = async (id, name, reason) => {
-    // Добавляем в базу пациентов врача
     await addDoc(collection(db, "doctors", auth.currentUser.uid, "patients"), { name, symptoms: reason });
-    // Обновляем статус заявки
     await updateDoc(doc(db, "requests", id), { status: 'accepted', doctorId: auth.currentUser.uid });
     showToast("Пациент добавлен в базу");
     loadRequests(); loadPatients(auth.currentUser.uid);
 };
 
-// Остальные функции врача (Пациенты, Расписание) остаются прежними...
 async function loadPatients(doctorId) {
     currentPatients = [];
     const snap = await getDocs(collection(db, "doctors", doctorId, "patients"));
@@ -344,8 +359,7 @@ window.adminDeleteUser = async (id) => {
 document.getElementById('admin-logout-btn').addEventListener('click', () => signOut(auth));
 
 
-// --- ЧАТЫ ДЛЯ ПАЦИЕНТА И ВРАЧА ---
-// Пациент
+// --- ЧАТЫ (Пациент и Врач) ---
 document.getElementById('chat-toggle-btn').onclick = () => document.getElementById('chat-window').classList.remove('hidden');
 document.getElementById('close-chat-btn').onclick = () => document.getElementById('chat-window').classList.add('hidden');
 
@@ -368,7 +382,6 @@ document.getElementById('send-msg-btn').onclick = async () => {
     }
 };
 
-// Врач
 document.getElementById('chat-toggle-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.remove('hidden');
 document.getElementById('close-chat-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.add('hidden');
 
@@ -393,7 +406,3 @@ document.getElementById('send-msg-btn-doc').onclick = async () => {
         msgs.innerHTML += `<div class="message bot-message">Включите VPN для работы ИИ.</div>`;
     }
 };
-
-function loadPatientChat(uid) {
-    // Логика истории чата (можно добавить по аналогии с врачом, если нужно)
-}
