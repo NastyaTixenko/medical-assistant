@@ -13,88 +13,97 @@
             <h1 class="auth-title">Вход в систему</h1>
             <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Пароль">
+            <!-- Новое поле для ключа (заполняется только для врачей и админов) -->
+            <input type="text" id="reg-key" placeholder="Ключ доступа (для врачей/админов)">
             <button id="login-btn" class="btn btn-primary">Войти</button>
             <button id="signup-btn" class="btn btn-secondary">Зарегистрироваться</button>
             <p id="auth-message"></p>
         </div>
     </div>
 
-    <!-- ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
-    <div id="app-section" class="app-layout" style="display: none;">
-        
-        <!-- Боковая панель -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>МедСистема</h2>
+    <!-- ЭКРАН ПАЦИЕНТА -->
+    <div id="patient-section" class="app-layout" style="display: none;">
+        <div class="patient-welcome">
+            <h1>Добро пожаловать в МедСистему</h1>
+            <p>Здесь вы можете записаться на прием к врачу, а также посоветоваться с нашим ИИ-ассистентом.</p>
+            <p>Заполните форму ниже, и врач свяжется с вами для подтверждения времени.</p>
+            
+            <div class="patient-form-card">
+                <h3>Заявка на прием</h3>
+                <div class="form-grid">
+                    <input type="text" id="p-fullname" placeholder="ФИО">
+                    <input type="date" id="p-dob" placeholder="Дата рождения">
+                    <input type="text" id="p-snils" placeholder="СНИЛС">
+                    <input type="text" id="p-policy" placeholder="Полис ОМС">
+                    <input type="text" id="p-city" placeholder="Город">
+                    <input type="text" id="p-reason" placeholder="Причина обращения">
+                </div>
+                <button id="submit-request-btn" class="btn btn-primary">Отправить врачу</button>
+                <button id="patient-logout-btn" class="btn btn-danger mt-10">Выйти</button>
             </div>
+        </div>
+        
+        <!-- ИИ Чат для пациента -->
+        <div id="chat-widget">
+            <button id="chat-toggle-btn">Чат с ИИ</button>
+            <div id="chat-window" class="hidden">
+                <div class="chat-header">
+                    <span>ИИ Ассистент</span>
+                    <button id="close-chat-btn">&times;</button>
+                </div>
+                <div id="chat-messages">
+                    <div class="message bot-message">Здравствуйте! Я помогу вам сориентироваться. Опишите ваши симптомы, и я подскажу, к какому врачу обратиться.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Задайте вопрос...">
+                    <button id="send-msg-btn">Отпр.</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ЭКРАН ВРАЧА -->
+    <div id="doctor-section" class="app-layout" style="display: none;">
+        <aside class="sidebar">
+            <div class="sidebar-header"><h2>Кабинет врача</h2></div>
             <nav class="sidebar-nav">
-                <button class="nav-btn active" data-target="view-patients">Пациенты</button>
+                <button class="nav-btn active" data-target="view-patients">Мои пациенты</button>
                 <button class="nav-btn" data-target="view-schedule">Расписание</button>
+                <button class="nav-btn" data-target="view-requests">Заявки от пациентов</button>
                 <button class="nav-btn" data-target="view-profile">Профиль</button>
             </nav>
         </aside>
-
-        <!-- Рабочая область -->
         <main class="main-content">
-            
-            <!-- ВКЛАДКА: ПАЦИЕНТЫ -->
+            <!-- Вкладка: Пациенты -->
             <section id="view-patients" class="view-section active-view">
-                <div class="section-header">
-                    <h2>База пациентов</h2>
-                    <div class="header-actions">
-                        <input type="text" id="search-patient" placeholder="Поиск по ФИО или СНИЛС..." class="search-input">
-                        <button id="export-csv-btn" class="btn btn-outline">Экспорт в Excel</button>
-                    </div>
-                </div>
-                
+                <div class="section-header"><h2>База пациентов</h2></div>
                 <div class="table-container">
                     <table id="patients-table">
-                        <thead>
-                            <tr>
-                                <th>ФИО</th>
-                                <th>СНИЛС</th>
-                                <th>Дата рожд.</th>
-                                <th>Жалобы</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
+                        <thead><tr><th>ФИО</th><th>СНИЛС</th><th>Дата рожд.</th><th>Жалобы</th><th>Действия</th></tr></thead>
                         <tbody id="patients-list"></tbody>
                     </table>
                 </div>
-
                 <div class="form-card">
                     <h3>Добавить пациента</h3>
                     <div class="form-grid">
-                        <input type="text" id="p-name" placeholder="ФИО пациента">
-                        <input type="text" id="p-snils" placeholder="СНИЛС">
-                        <input type="date" id="p-dob">
-                        <input type="text" id="p-symptoms" placeholder="Жалобы">
+                        <input type="text" id="d-p-name" placeholder="ФИО пациента">
+                        <input type="text" id="d-p-snils" placeholder="СНИЛС">
+                        <input type="date" id="d-p-dob">
+                        <input type="text" id="d-p-symptoms" placeholder="Жалобы">
                     </div>
                     <button id="add-patient-btn" class="btn btn-primary">Добавить в базу</button>
                 </div>
             </section>
 
-            <!-- ВКЛАДКА: РАСПИСАНИЕ -->
+            <!-- Вкладка: Расписание -->
             <section id="view-schedule" class="view-section">
-                <div class="section-header">
-                    <h2>Расписание приемов</h2>
-                </div>
-                
+                <div class="section-header"><h2>Расписание приемов</h2></div>
                 <div class="table-container">
                     <table id="schedule-table">
-                        <thead>
-                            <tr>
-                                <th>Дата</th>
-                                <th>Время</th>
-                                <th>Пациент</th>
-                                <th>Причина</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
+                        <thead><tr><th>Дата</th><th>Время</th><th>Пациент</th><th>Причина</th><th>Действия</th></tr></thead>
                         <tbody id="schedule-list"></tbody>
                     </table>
                 </div>
-
                 <div class="form-card">
                     <h3>Назначить прием</h3>
                     <div class="form-grid">
@@ -107,12 +116,20 @@
                 </div>
             </section>
 
-            <!-- ВКЛАДКА: ПРОФИЛЬ -->
-            <section id="view-profile" class="view-section">
-                <div class="section-header">
-                    <h2>Профиль врача</h2>
+            <!-- Вкладка: Заявки -->
+            <section id="view-requests" class="view-section">
+                <div class="section-header"><h2>Новые заявки от пациентов</h2></div>
+                <div class="table-container">
+                    <table id="requests-table">
+                        <thead><tr><th>ФИО</th><th>Дата рожд.</th><th>СНИЛС</th><th>Город</th><th>Причина</th><th>Действия</th></tr></thead>
+                        <tbody id="requests-list"></tbody>
+                    </table>
                 </div>
+            </section>
 
+            <!-- Вкладка: Профиль -->
+            <section id="view-profile" class="view-section">
+                <div class="section-header"><h2>Профиль врача</h2></div>
                 <div class="profile-layout">
                     <div class="profile-avatar-card">
                         <img id="profile-avatar-img" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Фото">
@@ -120,83 +137,67 @@
                         <input type="file" id="avatar-upload" accept="image/*" style="display: none;">
                         <p class="reg-date">Дата регистрации: <span id="reg-date">...</span></p>
                     </div>
-                    
                     <div class="profile-form-card">
-                        <div class="form-group">
-                            <label>ФИО</label>
-                            <input type="text" id="d-fullname">
-                        </div>
-                        <div class="form-group">
-                            <label>Номер телефона</label>
-                            <input type="tel" id="d-phone">
-                        </div>
-                        <div class="form-group">
-                            <label>Стаж работы</label>
-                            <input type="text" id="d-experience">
-                        </div>
+                        <div class="form-group"><label>ФИО</label><input type="text" id="d-fullname"></div>
+                        <div class="form-group"><label>Номер телефона</label><input type="tel" id="d-phone"></div>
+                        <div class="form-group"><label>Стаж работы</label><input type="text" id="d-experience"></div>
                         <button id="save-profile-btn" class="btn btn-primary">Сохранить изменения</button>
-                        <button id="logout-btn" class="btn btn-danger">Выйти из аккаунта</button>
+                        <button id="doctor-logout-btn" class="btn btn-danger">Выйти из аккаунта</button>
                     </div>
                 </div>
             </section>
-
         </main>
-    </div>
-
-    <!-- МОДАЛЬНОЕ ОКНО: КАРТОЧКА ПАЦИЕНТА -->
-    <div id="patient-modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-patient-name">Карточка пациента</h3>
-                <button class="close-modal-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p><strong>СНИЛС:</strong> <span id="modal-patient-snils"></span></p>
-                <p><strong>Дата рождения:</strong> <span id="modal-patient-dob"></span></p>
-                <p><strong>Жалобы:</strong> <span id="modal-patient-symptoms"></span></p>
-                
-                <div class="ai-prescription-box">
-                    <h4>Назначение врача (ИИ)</h4>
-                    <textarea id="ai-prescription-text" placeholder="Нажмите кнопку ниже, чтобы сгенерировать план лечения..."></textarea>
-                    <button id="generate-prescription-btn" class="btn btn-primary mt-10">Сгенерировать через ИИ</button>
-                    <button id="save-prescription-btn" class="btn btn-secondary mt-10">Сохранить в карту</button>
+        
+        <!-- Чат-ассистент для врача -->
+        <div id="chat-widget-doctor">
+            <button id="chat-toggle-btn-doc">Чат с ИИ</button>
+            <div id="chat-window-doc" class="hidden">
+                <div class="chat-header"><span>ИИ Ассистент</span><button id="close-chat-btn-doc">&times;</button></div>
+                <div id="chat-messages-doc">
+                    <div class="message bot-message">Здравствуйте, доктор. Я помогу с расписанием и пациентами.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input-doc" placeholder="Задайте вопрос...">
+                    <button id="send-msg-btn-doc">Отпр.</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО: ПОДТВЕРЖДЕНИЕ -->
-    <div id="confirm-modal" class="modal-overlay">
-        <div class="modal-content confirm-box">
-            <h3>Подтверждение</h3>
-            <p id="confirm-text">Вы уверены?</p>
-            <div class="confirm-actions">
-                <button id="confirm-yes" class="btn btn-danger">Да, удалить</button>
-                <button id="confirm-no" class="btn btn-secondary">Отмена</button>
-            </div>
-        </div>
+    <!-- ЭКРАН АДМИНА -->
+    <div id="admin-section" class="app-layout" style="display: none;">
+        <aside class="sidebar">
+            <div class="sidebar-header"><h2>Панель Админа</h2></div>
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" data-target="admin-view-users">Пользователи</button>
+                <button class="nav-btn" data-target="admin-view-requests">Все заявки</button>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <section id="admin-view-users" class="view-section active-view">
+                <div class="section-header"><h2>Все пользователи системы</h2></div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Email</th><th>Роль</th><th>ФИО (если есть)</th><th>Действия</th></tr></thead>
+                        <tbody id="admin-users-list"></tbody>
+                    </table>
+                </div>
+                <button id="admin-logout-btn" class="btn btn-danger mt-10">Выйти из аккаунта</button>
+            </section>
+            <section id="admin-view-requests" class="view-section">
+                <div class="section-header"><h2>Все заявки на прием</h2></div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Пациент</th><th>Причина</th><th>Статус</th></tr></thead>
+                        <tbody id="admin-requests-list"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <!-- КОНТЕЙНЕР ДЛЯ УВЕДОМЛЕНИЙ -->
+    <!-- Уведомления -->
     <div id="toast-container"></div>
-
-    <!-- ЧАТ-АССИСТЕНТ -->
-    <div id="chat-widget">
-        <button id="chat-toggle-btn">Чат с ИИ</button>
-        <div id="chat-window" class="hidden">
-            <div class="chat-header">
-                <span>ИИ Ассистент</span>
-                <button id="close-chat-btn">&times;</button>
-            </div>
-            <div id="chat-messages">
-                <div class="message bot-message">Здравствуйте. Я помогу вам с расписанием и пациентами.</div>
-            </div>
-            <div class="chat-input-area">
-                <input type="text" id="chat-input" placeholder="Задайте вопрос...">
-                <button id="send-msg-btn">Отпр.</button>
-            </div>
-        </div>
-    </div>
 
     <script type="module" src="app.js"></script>
 </body>
