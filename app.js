@@ -1,7 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-// ДОБАВЛЕНО arrayUnion
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc, query, where, arrayUnion } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBp8WY8Q63pXT4tpb5_gUJCK54wbU4SnbQ",
@@ -22,6 +21,7 @@ const CLOUDINARY_UPLOAD_PRESET = "medical_upload";
 const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
 
+// Обновил список моделей на актуальные бесплатные
 const FREE_MODELS = [
     "meta-llama/llama-3.3-70b-instruct:free",
     "google/gemma-3-27b-it:free",
@@ -33,7 +33,7 @@ const KEY_DOCTOR = "DOCTOR2026";
 const KEY_ADMIN = "ADMIN2026";
 
 let currentPatients = [];
-let currentSchedule = []; 
+let currentSchedule = []; // Будем хранить расписание для контекста ИИ
 let isRegistering = false;
 
 // --- УТИЛИТЫ ---
@@ -55,7 +55,7 @@ async function callAI(messages) {
                 body: JSON.stringify({ 
                     model: model, 
                     messages: messages,
-                    temperature: 0.5
+                    temperature: 0.5 // Снижаем температуру для более точных ответов по базе
                 })
             });
             if (res.ok) {
@@ -63,37 +63,15 @@ async function callAI(messages) {
                 if (data.choices && data.choices.length > 0) {
                     return data.choices[0].message.content;
                 }
+            } else {
+                console.warn(`Модель ${model} недоступна (код ${res.status})`);
             }
-        } catch (e) { continue; }
+        } catch (e) { 
+            console.error(`Сетевая ошибка (${model}):`, e);
+            continue; 
+        }
     }
     throw new Error("Не удалось получить ответ. Проверьте VPN или попробуйте позже.");
-}
-
-// --- СОХРАНЕНИЕ И ЗАГРУЗКА ИСТОРИИ ЧАТА ---
-async function saveChatMessage(userId, text, sender) {
-    try {
-        await setDoc(doc(db, "users", userId), {
-            chatHistory: arrayUnion({ text, sender, timestamp: new Date().toISOString() })
-        }, { merge: true });
-    } catch (e) {
-        console.error("Ошибка сохранения сообщения:", e);
-    }
-}
-
-async function loadChatHistory(userId, containerId, defaultMsg) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = '';
-    const userDoc = await getDoc(doc(db, "users", userId));
-    
-    if (userDoc.exists() && userDoc.data().chatHistory) {
-        const history = userDoc.data().chatHistory;
-        history.forEach(msg => {
-            container.innerHTML += `<div class="message ${msg.sender === 'user' ? 'user-message' : 'bot-message'}">${msg.text}</div>`;
-        });
-    } else {
-        container.innerHTML = `<div class="message bot-message">${defaultMsg}</div>`;
-    }
-    container.scrollTop = container.scrollHeight;
 }
 
 // --- РЕГИСТРАЦИЯ И ВХОД ---
@@ -152,15 +130,12 @@ onAuthStateChanged(auth, async (user) => {
                 const role = userDoc.data().role;
                 if (role === 'patient') {
                     patSec.style.display = 'block';
-                    loadChatHistory(user.uid, 'chat-messages', "Здравствуйте! Я помогу вам сориентироваться. Опишите ваши симптомы.");
                 } else if (role === 'doctor') {
                     docSec.style.display = 'flex';
                     loadDoctorData(user.uid);
-                    loadChatHistory(user.uid, 'chat-messages-doc', "Здравствуйте, доктор. Я помогу с расписанием и пациентами.");
                 } else if (role === 'admin') {
                     admSec.style.display = 'flex';
                     loadAdminData();
-                    loadChatHistory(user.uid, 'chat-messages-adm', "Здравствуйте, администратор. Чем помочь?");
                 }
             } else {
                 await signOut(auth);
@@ -330,17 +305,18 @@ document.getElementById('add-schedule-btn').addEventListener('click', async () =
 });
 
 async function loadSchedule(doctorId) {
-    currentSchedule = []; 
+    currentSchedule = []; // Очищаем и заполняем заново
     const tbody = document.getElementById('schedule-list');
     tbody.innerHTML = '';
     const snap = await getDocs(collection(db, "doctors", doctorId, "schedule"));
     
+    // Сортируем по дате
     let schedArray = [];
     snap.forEach(d => schedArray.push({ id: d.id, ...d.data() }));
     schedArray.sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time));
     
     schedArray.forEach(s => {
-        currentSchedule.push(s); 
+        currentSchedule.push(s); // Сохраняем в глобальную переменную для ИИ
         tbody.innerHTML += `<tr><td>${s.date}</td><td>${s.time}</td><td>${s.patientName}</td><td>${s.reason || '-'}</td><td><span class="action-link danger" onclick="deleteSchedule('${s.id}')">Отменить</span></td></tr>`;
     });
 }
@@ -396,8 +372,7 @@ window.adminDeleteUser = async (id) => {
 
 document.getElementById('admin-logout-btn').addEventListener('click', () => signOut(auth));
 
-// --- ЧАТЫ С СОХРАНЕНИЕМ ИСТОРИИ ---
-
+// --- ЧАТЫ ---
 // Пациент
 document.getElementById('chat-toggle-btn').onclick = () => document.getElementById('chat-window').classList.remove('hidden');
 document.getElementById('close-chat-btn').onclick = () => document.getElementById('chat-window').classList.add('hidden');
@@ -405,30 +380,19 @@ document.getElementById('close-chat-btn').onclick = () => document.getElementByI
 document.getElementById('send-msg-btn').onclick = async () => {
     const input = document.getElementById('chat-input');
     const msgs = document.getElementById('chat-messages');
-    const user = auth.currentUser;
-    if(!input.value || !user) return;
+    if(!input.value) return;
     
-    const text = input.value;
-    msgs.innerHTML += `<div class="message user-message">${text}</div>`;
-    input.value = '';
+    msgs.innerHTML += `<div class="message user-message">${input.value}</div>`;
+    const text = input.value; input.value = '';
     msgs.innerHTML += `<div class="message bot-message">Анализирую...</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
-
-    // Сохраняем сообщение пользователя
-    saveChatMessage(user.uid, text, 'user');
     
     try {
         const reply = await callAI([{ role: "system", content: "Ты вежливый медицинский ассистент. Подскажи, к какому врачу обратиться." }, { role: "user", content: text }]);
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`;
-        msgs.scrollTop = msgs.scrollHeight;
-        
-        // Сохраняем ответ ИИ
-        saveChatMessage(user.uid, reply, 'bot');
     } catch(e) {
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`;
-        msgs.scrollTop = msgs.scrollHeight;
     }
 };
 
@@ -439,20 +403,17 @@ document.getElementById('close-chat-btn-doc').onclick = () => document.getElemen
 document.getElementById('send-msg-btn-doc').onclick = async () => {
     const input = document.getElementById('chat-input-doc');
     const msgs = document.getElementById('chat-messages-doc');
-    const user = auth.currentUser;
-    if(!input.value || !user) return;
+    if(!input.value) return;
 
-    const text = input.value;
-    msgs.innerHTML += `<div class="message user-message">${text}</div>`;
-    input.value = '';
+    msgs.innerHTML += `<div class="message user-message">${input.value}</div>`;
+    const text = input.value; input.value = '';
     msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
 
-    // Сохраняем сообщение пользователя
-    saveChatMessage(user.uid, text, 'user');
-
+    // Собираем контекст пациентов
     let context = "СПИСОК ПАЦИЕНТОВ:\n";
     currentPatients.forEach(p => context += `- ${p.name} (Жалобы: ${p.symptoms})\n`);
+    
+    // Собираем контекст расписания
     context += "\nРАСПИСАНИЕ ПРИЕМОВ:\n";
     currentSchedule.forEach(s => context += `- Дата: ${s.date}, Время: ${s.time}, Пациент: ${s.patientName}, Причина: ${s.reason}\n`);
 
@@ -462,14 +423,9 @@ document.getElementById('send-msg-btn-doc').onclick = async () => {
         const reply = await callAI([{ role: "system", content: sysPrompt }, { role: "user", content: text }]);
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`;
-        msgs.scrollTop = msgs.scrollHeight;
-        
-        // Сохраняем ответ ИИ
-        saveChatMessage(user.uid, reply, 'bot');
     } catch(e) {
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`;
-        msgs.scrollTop = msgs.scrollHeight;
     }
 };
 
@@ -480,29 +436,18 @@ document.getElementById('close-chat-btn-adm').onclick = () => document.getElemen
 document.getElementById('send-msg-btn-adm').onclick = async () => {
     const input = document.getElementById('chat-input-adm');
     const msgs = document.getElementById('chat-messages-adm');
-    const user = auth.currentUser;
-    if(!input.value || !user) return;
+    if(!input.value) return;
 
-    const text = input.value;
-    msgs.innerHTML += `<div class="message user-message">${text}</div>`;
-    input.value = '';
+    msgs.innerHTML += `<div class="message user-message">${input.value}</div>`;
+    const text = input.value; input.value = '';
     msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
-
-    // Сохраняем сообщение пользователя
-    saveChatMessage(user.uid, text, 'user');
 
     try {
         const reply = await callAI([{ role: "system", content: "Ты помощник администратора медицинской системы." }, { role: "user", content: text }]);
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`;
-        msgs.scrollTop = msgs.scrollHeight;
-        
-        // Сохраняем ответ ИИ
-        saveChatMessage(user.uid, reply, 'bot');
     } catch(e) {
         msgs.lastChild.remove();
         msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`;
-        msgs.scrollTop = msgs.scrollHeight;
     }
 };
