@@ -13,7 +13,6 @@
             <h1 class="auth-title">Вход в систему</h1>
             <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Пароль">
-            <!-- Новое поле для ключа (заполняется только для врачей и админов) -->
             <input type="text" id="reg-key" placeholder="Ключ доступа (для врачей/админов)">
             <button id="login-btn" class="btn btn-primary">Войти</button>
             <button id="signup-btn" class="btn btn-secondary">Зарегистрироваться</button>
@@ -44,15 +43,15 @@
         </div>
         
         <!-- ИИ Чат для пациента -->
-        <div id="chat-widget">
-            <button id="chat-toggle-btn">Чат с ИИ</button>
-            <div id="chat-window" class="hidden">
+        <div class="chat-widget-container">
+            <button id="chat-toggle-btn" class="chat-toggle">Чат с ИИ</button>
+            <div id="chat-window" class="hidden chat-window">
                 <div class="chat-header">
                     <span>ИИ Ассистент</span>
                     <button id="close-chat-btn">&times;</button>
                 </div>
-                <div id="chat-messages">
-                    <div class="message bot-message">Здравствуйте! Я помогу вам сориентироваться. Опишите ваши симптомы, и я подскажу, к какому врачу обратиться.</div>
+                <div id="chat-messages" class="chat-messages">
+                    <div class="message bot-message">Здравствуйте! Я помогу вам сориентироваться. Опишите ваши симптомы.</div>
                 </div>
                 <div class="chat-input-area">
                     <input type="text" id="chat-input" placeholder="Задайте вопрос...">
@@ -74,7 +73,6 @@
             </nav>
         </aside>
         <main class="main-content">
-            <!-- Вкладка: Пациенты -->
             <section id="view-patients" class="view-section active-view">
                 <div class="section-header"><h2>База пациентов</h2></div>
                 <div class="table-container">
@@ -94,8 +92,6 @@
                     <button id="add-patient-btn" class="btn btn-primary">Добавить в базу</button>
                 </div>
             </section>
-
-            <!-- Вкладка: Расписание -->
             <section id="view-schedule" class="view-section">
                 <div class="section-header"><h2>Расписание приемов</h2></div>
                 <div class="table-container">
@@ -115,8 +111,6 @@
                     <button id="add-schedule-btn" class="btn btn-primary">Записать на прием</button>
                 </div>
             </section>
-
-            <!-- Вкладка: Заявки -->
             <section id="view-requests" class="view-section">
                 <div class="section-header"><h2>Новые заявки от пациентов</h2></div>
                 <div class="table-container">
@@ -126,8 +120,6 @@
                     </table>
                 </div>
             </section>
-
-            <!-- Вкладка: Профиль -->
             <section id="view-profile" class="view-section">
                 <div class="section-header"><h2>Профиль врача</h2></div>
                 <div class="profile-layout">
@@ -147,13 +139,13 @@
                 </div>
             </section>
         </main>
-        
+
         <!-- Чат-ассистент для врача -->
-        <div id="chat-widget-doctor">
-            <button id="chat-toggle-btn-doc">Чат с ИИ</button>
-            <div id="chat-window-doc" class="hidden">
+        <div class="chat-widget-container">
+            <button id="chat-toggle-btn-doc" class="chat-toggle">Чат с ИИ</button>
+            <div id="chat-window-doc" class="hidden chat-window">
                 <div class="chat-header"><span>ИИ Ассистент</span><button id="close-chat-btn-doc">&times;</button></div>
-                <div id="chat-messages-doc">
+                <div id="chat-messages-doc" class="chat-messages">
                     <div class="message bot-message">Здравствуйте, доктор. Я помогу с расписанием и пациентами.</div>
                 </div>
                 <div class="chat-input-area">
@@ -194,11 +186,24 @@
                 </div>
             </section>
         </main>
+
+        <!-- Чат-ассистент для админа -->
+        <div class="chat-widget-container">
+            <button id="chat-toggle-btn-adm" class="chat-toggle">Чат с ИИ</button>
+            <div id="chat-window-adm" class="hidden chat-window">
+                <div class="chat-header"><span>ИИ Ассистент</span><button id="close-chat-btn-adm">&times;</button></div>
+                <div id="chat-messages-adm" class="chat-messages">
+                    <div class="message bot-message">Здравствуйте, администратор. Чем помочь?</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input-adm" placeholder="Задайте вопрос...">
+                    <button id="send-msg-btn-adm">Отпр.</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Уведомления -->
     <div id="toast-container"></div>
-
     <script type="module" src="app.js"></script>
 </body>
 </html>
