@@ -157,8 +157,12 @@
             </nav>
         </aside>
         <main class="main-content">
+            <!-- Пользователи -->
             <section id="admin-view-users" class="view-section active-view">
-                <div class="section-header"><h2>Все пользователи (users)</h2></div>
+                <div class="section-header">
+                    <h2>Все пользователи (users)</h2>
+                    <button class="btn btn-primary" onclick="openAddModal('users')">Добавить пользователя</button>
+                </div>
                 <div class="table-container">
                     <table>
                         <thead><tr><th>ID</th><th>Email</th><th>Роль</th><th>Действия</th></tr></thead>
@@ -167,8 +171,12 @@
                 </div>
             </section>
             
+            <!-- Заявки -->
             <section id="admin-view-requests" class="view-section">
-                <div class="section-header"><h2>Все заявки (requests)</h2></div>
+                <div class="section-header">
+                    <h2>Все заявки (requests)</h2>
+                    <button class="btn btn-primary" onclick="openAddModal('requests')">Добавить заявку</button>
+                </div>
                 <div class="table-container">
                     <table>
                         <thead><tr><th>ID</th><th>ФИО</th><th>Причина</th><th>Статус</th><th>Действия</th></tr></thead>
@@ -177,8 +185,12 @@
                 </div>
             </section>
 
+            <!-- Врачи -->
             <section id="admin-view-doctors" class="view-section">
-                <div class="section-header"><h2>Профили врачей (doctors)</h2></div>
+                <div class="section-header">
+                    <h2>Профили врачей (doctors)</h2>
+                    <button class="btn btn-primary" onclick="openAddModal('doctors')">Добавить врача</button>
+                </div>
                 <div class="table-container">
                     <table>
                         <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Стаж</th><th>Действия</th></tr></thead>
@@ -191,11 +203,11 @@
         </main>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ (Админ) -->
+    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ/ДОБАВЛЕНИЯ (Админ) -->
     <div id="edit-modal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Редактирование записи</h3>
+                <h3 id="edit-modal-title">Редактирование записи</h3>
                 <button class="close-modal-btn" onclick="closeEditModal()">&times;</button>
             </div>
             <div class="modal-body">
