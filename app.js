@@ -168,12 +168,28 @@ window.openEditModal = (collectionName, docId, data) => {
     
     for (const [key, value] of Object.entries(data)) {
         if (typeof value === 'object' && value !== null) continue; 
-        formFields.innerHTML += `
-            <div class="form-group">
-                <label>${key}</label>
-                <input type="text" id="edit-${key}" value="${value || ''}" ${key === 'role' || key === 'email' ? 'readonly' : ''}>
-            </div>
-        `;
+        
+        // Если это роль пользователя, делаем выпадающий список
+        if (key === 'role' && collectionName === 'users') {
+            formFields.innerHTML += `
+                <div class="form-group">
+                    <label>${key}</label>
+                    <select id="edit-${key}">
+                        <option value="patient" ${value === 'patient' ? 'selected' : ''}>Пациент</option>
+                        <option value="doctor" ${value === 'doctor' ? 'selected' : ''}>Врач</option>
+                        <option value="admin" ${value === 'admin' ? 'selected' : ''}>Администратор</option>
+                    </select>
+                </div>
+            `;
+        } else {
+            // Остальные поля - обычный текст
+            formFields.innerHTML += `
+                <div class="form-group">
+                    <label>${key}</label>
+                    <input type="text" id="edit-${key}" value="${value || ''}" ${key === 'email' ? 'readonly' : ''}>
+                </div>
+            `;
+        }
     }
     document.getElementById('edit-modal').classList.add('active');
 };
@@ -191,12 +207,26 @@ window.openAddModal = (collectionName) => {
     else if (collectionName === 'doctors') fields = ['fullName', 'phone', 'experience'];
 
     fields.forEach(key => {
-        formFields.innerHTML += `
-            <div class="form-group">
-                <label>${key}</label>
-                <input type="text" id="edit-${key}" value="" placeholder="Введите ${key}...">
-            </div>
-        `;
+        // Если добавляем пользователя, роль - это выпадающий список
+        if (key === 'role' && collectionName === 'users') {
+            formFields.innerHTML += `
+                <div class="form-group">
+                    <label>${key}</label>
+                    <select id="edit-${key}">
+                        <option value="patient">Пациент</option>
+                        <option value="doctor">Врач</option>
+                        <option value="admin">Администратор</option>
+                    </select>
+                </div>
+            `;
+        } else {
+            formFields.innerHTML += `
+                <div class="form-group">
+                    <label>${key}</label>
+                    <input type="text" id="edit-${key}" value="" placeholder="Введите ${key}...">
+                </div>
+            `;
+        }
     });
     document.getElementById('edit-modal').classList.add('active');
 };
@@ -209,10 +239,13 @@ document.getElementById('save-edit-btn').addEventListener('click', async () => {
     const { collectionName, docId, isNew } = currentEditContext;
     
     const updatedData = {};
-    document.querySelectorAll('#edit-form-fields input').forEach(input => {
-        if (input.readOnly) return;
-        const key = input.id.replace('edit-', '');
-        updatedData[key] = input.value;
+    // Выбираем все поля ввода И выпадающие списки
+    const fields = document.querySelectorAll('#edit-form-fields input, #edit-form-fields select');
+    
+    fields.forEach(field => {
+        if (field.readOnly) return;
+        const key = field.id.replace('edit-', '');
+        updatedData[key] = field.value;
     });
 
     try {
