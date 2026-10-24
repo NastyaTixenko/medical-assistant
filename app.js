@@ -16,14 +16,22 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- НАСТРОЙКИ CLOUDINARY И ИИ ---
+// --- НАСТРОЙКИ CLOUDINARY И OPENROUTER ---
 const CLOUDINARY_CLOUD_NAME = "rjdmw1u"; 
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
+
+// Актуальные бесплатные модели (если одна падает, пробуем следующую)
+const FREE_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+    "google/gemma-2-9b-it:free",
+    "openrouter/free"
+];
+
 const KEY_DOCTOR = "DOCTOR2026";
 const KEY_ADMIN = "ADMIN2026";
-const FREE_MODELS = ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "openrouter/free"];
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
@@ -64,13 +72,20 @@ document.getElementById('signup-btn').addEventListener('click', async () => {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
     const key = document.getElementById('reg-key').value.trim();
-    let role = key === KEY_DOCTOR ? 'doctor' : (key === KEY_ADMIN ? 'admin' : 'patient');
     
+    let role = 'patient';
+    if (key === KEY_DOCTOR) role = 'doctor';
+    if (key === KEY_ADMIN) role = 'admin';
+
     try {
         isRegistering = true;
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, "users", userCred.user.uid), { email, role, registrationDate: new Date().toLocaleDateString('ru-RU') });
-        showToast("Регистрация успешна! Загрузка...");
+        await setDoc(doc(db, "users", userCred.user.uid), { 
+            email: email, 
+            role: role, 
+            registrationDate: new Date().toLocaleDateString('ru-RU') 
+        });
+        showToast("Регистрация успешна!");
         setTimeout(() => window.location.reload(), 1000); 
     } catch (e) { 
         showToast("Ошибка: " + e.message, "error"); 
@@ -85,6 +100,7 @@ document.getElementById('login-btn').addEventListener('click', () => {
 
 onAuthStateChanged(auth, async (user) => {
     if (isRegistering) return; 
+    
     const authSec = document.getElementById('auth-section');
     const patSec = document.getElementById('patient-section');
     const docSec = document.getElementById('doctor-section');
@@ -93,6 +109,7 @@ onAuthStateChanged(auth, async (user) => {
     if (user) {
         authSec.style.display = 'none';
         const userDoc = await getDoc(doc(db, "users", user.uid));
+        
         if (userDoc.exists()) {
             const role = userDoc.data().role;
             if (role === 'patient') { 
@@ -107,6 +124,7 @@ onAuthStateChanged(auth, async (user) => {
             else if (role === 'admin') { 
                 admSec.style.display = 'flex'; 
                 loadAdminData(); 
+                loadChatHistory(user.uid, 'chat-messages-adm');
             }
         } else { 
             await signOut(auth); 
@@ -127,7 +145,7 @@ async function loadAdminData() {
     const docList = document.getElementById('admin-doctors-list');
     usersList.innerHTML = ''; reqList.innerHTML = ''; docList.innerHTML = '';
 
-    // Users
+    // 1. Пользователи
     const usersSnap = await getDocs(collection(db, "users"));
     usersSnap.forEach(d => {
         const u = d.data();
@@ -139,7 +157,7 @@ async function loadAdminData() {
             </td></tr>`;
     });
 
-    // Requests
+    // 2. Заявки
     const reqSnap = await getDocs(collection(db, "requests"));
     reqSnap.forEach(d => {
         const r = d.data();
@@ -151,7 +169,7 @@ async function loadAdminData() {
             </td></tr>`;
     });
 
-    // Doctors
+    // 3. Врачи
     const docSnap = await getDocs(collection(db, "doctors"));
     docSnap.forEach(d => {
         const docData = d.data();
@@ -188,7 +206,7 @@ window.openEditModal = (collectionName, docId, data) => {
     formFields.innerHTML = '';
     
     for (const [key, value] of Object.entries(data)) {
-        if (typeof value === 'object' && value !== null) continue; // Пропускаем массивы/объекты
+        if (typeof value === 'object' && value !== null) continue; 
         formFields.innerHTML += `
             <div class="form-group">
                 <label>${key}</label>
@@ -374,8 +392,11 @@ document.getElementById('generate-prescription-btn').addEventListener('click', a
     const btn = document.getElementById('generate-prescription-btn'); 
     const textarea = document.getElementById('ai-prescription-text');
     btn.textContent = "Генерация..."; btn.disabled = true; textarea.value = "ИИ анализирует симптомы...";
+    
+    const prompt = `Ты опытный врач. Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения.`;
+
     try {
-        const aiReply = await callAI([{ role: "system", content: "Ты медицинский ассистент." }, { role: "user", content: `Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения.` }]);
+        const aiReply = await callAI([{ role: "system", content: "Ты медицинский ассистент." }, { role: "user", content: prompt }]);
         textarea.value = aiReply;
     } catch (e) { textarea.value = "Ошибка: " + e.message; } 
     finally { btn.textContent = "Сгенерировать через ИИ"; btn.disabled = false; }
@@ -387,7 +408,7 @@ document.getElementById('save-prescription-btn').addEventListener('click', async
     showToast("Назначение сохранено"); closePatientModal(); loadPatients(auth.currentUser.uid);
 });
 
-// --- ПАЦИЕНТ И ЧАТЫ ---
+// --- ПАЦИЕНТ ---
 document.getElementById('submit-request-btn').addEventListener('click', async () => {
     const user = auth.currentUser; if(!user) return;
     const req = { 
@@ -408,6 +429,7 @@ document.getElementById('submit-request-btn').addEventListener('click', async ()
 
 document.getElementById('patient-logout-btn').addEventListener('click', () => signOut(auth));
 
+// --- ЧАТЫ ---
 async function saveChatMessage(userId, text, sender) {
     await setDoc(doc(db, "users", userId), { chatHistory: arrayUnion({ text, sender }) }, { merge: true });
 }
@@ -423,6 +445,7 @@ async function loadChatHistory(userId, containerId) {
     }
 }
 
+// Чат Пациента
 document.getElementById('chat-toggle-btn').onclick = () => document.getElementById('chat-window').classList.toggle('hidden');
 document.getElementById('close-chat-btn').onclick = () => document.getElementById('chat-window').classList.add('hidden');
 document.getElementById('send-msg-btn').onclick = async () => {
@@ -435,12 +458,14 @@ document.getElementById('send-msg-btn').onclick = async () => {
     msgs.innerHTML += `<div class="message user-message">${text}</div>`; 
     input.value = ''; 
     msgs.innerHTML += `<div class="message bot-message">Анализирую...</div>`;
+    msgs.scrollTop = msgs.scrollHeight;
     saveChatMessage(user.uid, text, 'user');
     
     try {
-        const reply = await callAI([{ role: "system", content: "Ты вежливый медицинский ассистент." }, { role: "user", content: text }]);
+        const reply = await callAI([{ role: "system", content: "Ты вежливый медицинский ассистент. Подскажи, к какому врачу обратиться." }, { role: "user", content: text }]);
         msgs.lastChild.remove(); 
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; 
+        msgs.scrollTop = msgs.scrollHeight;
         saveChatMessage(user.uid, reply, 'bot');
     } catch(e) { 
         msgs.lastChild.remove(); 
@@ -448,6 +473,7 @@ document.getElementById('send-msg-btn').onclick = async () => {
     }
 };
 
+// Чат Врача (С КОНТЕКСТОМ ДАТЫ И БАЗЫ)
 document.getElementById('chat-toggle-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.toggle('hidden');
 document.getElementById('close-chat-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.add('hidden');
 document.getElementById('send-msg-btn-doc').onclick = async () => {
@@ -460,15 +486,62 @@ document.getElementById('send-msg-btn-doc').onclick = async () => {
     msgs.innerHTML += `<div class="message user-message">${text}</div>`; 
     input.value = ''; 
     msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
+    msgs.scrollTop = msgs.scrollHeight;
     saveChatMessage(user.uid, text, 'user');
     
-    let context = "Пациенты:\n"; 
-    currentPatients.forEach(p => context += `- ${p.name} (${p.symptoms})\n`);
+    // Получаем сегодняшнюю дату
+    const todayDate = new Date().toLocaleDateString('ru-RU');
+
+    let context = `СЕГОДНЯШНЯЯ ДАТА: ${todayDate}\n\n`;
+    context += "--- СПИСОК ПАЦИЕНТОВ ---\n"; 
+    currentPatients.forEach(p => context += `- ${p.name} (Жалобы: ${p.symptoms})\n`);
+    
+    context += "\n--- РАСПИСАНИЕ ПРИЕМОВ ---\n";
+    currentSchedule.forEach(s => context += `- Дата: ${s.date}, Время: ${s.time}, Пациент: ${s.patientName}, Причина: ${s.reason}\n`);
+    
+    // Жесткий промпт
+    const sysPrompt = `Ты — умный медицинский ассистент, встроенный в систему врача. 
+    Ты ИМЕЕШЬ ПОЛНЫЙ ДОСТУП к базе данных, которая приведена ниже. 
+    КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать фразами "я не имею доступа", "это конфиденциально" или "я не могу". Ты работаешь внутри защищенного контура.
+    Используй предоставленное расписание и сравнивай даты, чтобы точно ответить на вопрос врача. Если врач спрашивает про "завтра", посмотри на сегодняшнюю дату и найди приемы на следующий день.
+    Отвечай четко, называй ФИО, время и причину визита.
+    
+    Данные из базы:
+    ${context}`;
     
     try {
-        const reply = await callAI([{ role: "system", content: `Ты ассистент врача. Данные: ${context}` }, { role: "user", content: text }]);
+        const reply = await callAI([{ role: "system", content: sysPrompt }, { role: "user", content: text }]);
         msgs.lastChild.remove(); 
         msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; 
+        msgs.scrollTop = msgs.scrollHeight;
+        saveChatMessage(user.uid, reply, 'bot');
+    } catch(e) { 
+        msgs.lastChild.remove(); 
+        msgs.innerHTML += `<div class="message bot-message">Ошибка: ${e.message}</div>`; 
+    }
+};
+
+// Чат Админа
+document.getElementById('chat-toggle-btn-adm').onclick = () => document.getElementById('chat-window-adm').classList.toggle('hidden');
+document.getElementById('close-chat-btn-adm').onclick = () => document.getElementById('chat-window-adm').classList.add('hidden');
+document.getElementById('send-msg-btn-adm').onclick = async () => {
+    const input = document.getElementById('chat-input-adm'); 
+    const msgs = document.getElementById('chat-messages-adm'); 
+    const user = auth.currentUser;
+    if(!input.value || !user) return;
+
+    const text = input.value; 
+    msgs.innerHTML += `<div class="message user-message">${text}</div>`; 
+    input.value = ''; 
+    msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+    saveChatMessage(user.uid, text, 'user');
+
+    try {
+        const reply = await callAI([{ role: "system", content: "Ты помощник администратора медицинской системы." }, { role: "user", content: text }]);
+        msgs.lastChild.remove(); 
+        msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; 
+        msgs.scrollTop = msgs.scrollHeight;
         saveChatMessage(user.uid, reply, 'bot');
     } catch(e) { 
         msgs.lastChild.remove(); 
