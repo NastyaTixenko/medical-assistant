@@ -21,24 +21,16 @@ const CLOUDINARY_CLOUD_NAME = "rjdmw1u";
 const CLOUDINARY_UPLOAD_PRESET = "medical_upload"; 
 const CLOUDINARY_API_KEY = "856839289392595";
 const OPENROUTER_API_KEY = "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"; 
-
-// Актуальные бесплатные модели (если одна падает, пробуем следующую)
-const FREE_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen-2.5-72b-instruct:free",
-    "google/gemma-2-9b-it:free",
-    "openrouter/free"
-];
-
 const KEY_DOCTOR = "DOCTOR2026";
 const KEY_ADMIN = "ADMIN2026";
+const FREE_MODELS = ["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free", "openrouter/free"];
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
 let currentPatients = [];
 let currentSchedule = []; 
 let currentModalPatientId = null;
 let isRegistering = false;
-let currentEditContext = null;
+let currentEditContext = null; // { collectionName, docId (или null для добавления), isNew }
 
 // --- УТИЛИТЫ ---
 function showToast(msg, type = 'success') {
@@ -54,8 +46,7 @@ async function callAI(messages) {
     for (const model of FREE_MODELS) {
         try {
             const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST", 
-                headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
+                method: "POST", headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
                 body: JSON.stringify({ model: model, messages: messages, temperature: 0.5 })
             });
             if (res.ok) {
@@ -72,25 +63,13 @@ document.getElementById('signup-btn').addEventListener('click', async () => {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
     const key = document.getElementById('reg-key').value.trim();
-    
-    let role = 'patient';
-    if (key === KEY_DOCTOR) role = 'doctor';
-    if (key === KEY_ADMIN) role = 'admin';
-
+    let role = key === KEY_DOCTOR ? 'doctor' : (key === KEY_ADMIN ? 'admin' : 'patient');
     try {
         isRegistering = true;
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, "users", userCred.user.uid), { 
-            email: email, 
-            role: role, 
-            registrationDate: new Date().toLocaleDateString('ru-RU') 
-        });
-        showToast("Регистрация успешна!");
-        setTimeout(() => window.location.reload(), 1000); 
-    } catch (e) { 
-        showToast("Ошибка: " + e.message, "error"); 
-        isRegistering = false; 
-    }
+        await setDoc(doc(db, "users", userCred.user.uid), { email, role, registrationDate: new Date().toLocaleDateString('ru-RU') });
+        showToast("Регистрация успешна!"); setTimeout(() => window.location.reload(), 1000); 
+    } catch (e) { showToast("Ошибка: " + e.message, "error"); isRegistering = false; }
 });
 
 document.getElementById('login-btn').addEventListener('click', () => {
@@ -100,7 +79,6 @@ document.getElementById('login-btn').addEventListener('click', () => {
 
 onAuthStateChanged(auth, async (user) => {
     if (isRegistering) return; 
-    
     const authSec = document.getElementById('auth-section');
     const patSec = document.getElementById('patient-section');
     const docSec = document.getElementById('doctor-section');
@@ -109,32 +87,14 @@ onAuthStateChanged(auth, async (user) => {
     if (user) {
         authSec.style.display = 'none';
         const userDoc = await getDoc(doc(db, "users", user.uid));
-        
         if (userDoc.exists()) {
             const role = userDoc.data().role;
-            if (role === 'patient') { 
-                patSec.style.display = 'block'; 
-                loadChatHistory(user.uid, 'chat-messages'); 
-            }
-            else if (role === 'doctor') { 
-                docSec.style.display = 'flex'; 
-                loadDoctorData(user.uid); 
-                loadChatHistory(user.uid, 'chat-messages-doc'); 
-            }
-            else if (role === 'admin') { 
-                admSec.style.display = 'flex'; 
-                loadAdminData(); 
-                loadChatHistory(user.uid, 'chat-messages-adm');
-            }
-        } else { 
-            await signOut(auth); 
-            alert("Аккаунт устарел. Зарегистрируйтесь заново."); 
-        }
+            if (role === 'patient') { patSec.style.display = 'block'; loadChatHistory(user.uid, 'chat-messages'); }
+            else if (role === 'doctor') { docSec.style.display = 'flex'; loadDoctorData(user.uid); loadChatHistory(user.uid, 'chat-messages-doc'); }
+            else if (role === 'admin') { admSec.style.display = 'flex'; loadAdminData(); loadChatHistory(user.uid, 'chat-messages-adm'); }
+        } else { await signOut(auth); alert("Аккаунт устарел. Зарегистрируйтесь заново."); }
     } else {
-        authSec.style.display = 'flex'; 
-        patSec.style.display = 'none'; 
-        docSec.style.display = 'none'; 
-        admSec.style.display = 'none';
+        authSec.style.display = 'flex'; patSec.style.display = 'none'; docSec.style.display = 'none'; admSec.style.display = 'none';
     }
 });
 
@@ -145,7 +105,7 @@ async function loadAdminData() {
     const docList = document.getElementById('admin-doctors-list');
     usersList.innerHTML = ''; reqList.innerHTML = ''; docList.innerHTML = '';
 
-    // 1. Пользователи
+    // Users
     const usersSnap = await getDocs(collection(db, "users"));
     usersSnap.forEach(d => {
         const u = d.data();
@@ -157,7 +117,7 @@ async function loadAdminData() {
             </td></tr>`;
     });
 
-    // 2. Заявки
+    // Requests
     const reqSnap = await getDocs(collection(db, "requests"));
     reqSnap.forEach(d => {
         const r = d.data();
@@ -169,7 +129,7 @@ async function loadAdminData() {
             </td></tr>`;
     });
 
-    // 3. Врачи
+    // Doctors
     const docSnap = await getDocs(collection(db, "doctors"));
     docSnap.forEach(d => {
         const docData = d.data();
@@ -195,13 +155,14 @@ window.adminDelete = async (collectionName, id) => {
     if(!confirm(`Удалить запись из ${collectionName}?`)) return;
     try {
         await deleteDoc(doc(db, collectionName, id));
-        showToast("Запись удалена");
-        loadAdminData();
+        showToast("Запись удалена"); loadAdminData();
     } catch(e) { showToast("Ошибка удаления", "error"); }
 };
 
+// Открытие модалки для РЕДАКТИРОВАНИЯ
 window.openEditModal = (collectionName, docId, data) => {
-    currentEditContext = { collectionName, docId };
+    currentEditContext = { collectionName, docId, isNew: false };
+    document.getElementById('edit-modal-title').textContent = "Редактирование записи";
     const formFields = document.getElementById('edit-form-fields');
     formFields.innerHTML = '';
     
@@ -217,13 +178,37 @@ window.openEditModal = (collectionName, docId, data) => {
     document.getElementById('edit-modal').classList.add('active');
 };
 
+// Открытие модалки для ДОБАВЛЕНИЯ
+window.openAddModal = (collectionName) => {
+    currentEditContext = { collectionName, docId: null, isNew: true };
+    document.getElementById('edit-modal-title').textContent = "Добавление новой записи";
+    const formFields = document.getElementById('edit-form-fields');
+    formFields.innerHTML = '';
+
+    let fields = [];
+    if (collectionName === 'users') fields = ['email', 'role'];
+    else if (collectionName === 'requests') fields = ['fullName', 'reason', 'status', 'dob', 'snils', 'city'];
+    else if (collectionName === 'doctors') fields = ['fullName', 'phone', 'experience'];
+
+    fields.forEach(key => {
+        formFields.innerHTML += `
+            <div class="form-group">
+                <label>${key}</label>
+                <input type="text" id="edit-${key}" value="" placeholder="Введите ${key}...">
+            </div>
+        `;
+    });
+    document.getElementById('edit-modal').classList.add('active');
+};
+
 window.closeEditModal = () => document.getElementById('edit-modal').classList.remove('active');
 
+// Сохранение (добавление или обновление)
 document.getElementById('save-edit-btn').addEventListener('click', async () => {
     if (!currentEditContext) return;
-    const { collectionName, docId } = currentEditContext;
-    const updatedData = {};
+    const { collectionName, docId, isNew } = currentEditContext;
     
+    const updatedData = {};
     document.querySelectorAll('#edit-form-fields input').forEach(input => {
         if (input.readOnly) return;
         const key = input.id.replace('edit-', '');
@@ -231,8 +216,14 @@ document.getElementById('save-edit-btn').addEventListener('click', async () => {
     });
 
     try {
-        await updateDoc(doc(db, collectionName, docId), updatedData);
-        showToast("Данные обновлены!");
+        if (isNew) {
+            if (collectionName === 'users') updatedData.registrationDate = new Date().toLocaleDateString('ru-RU');
+            await addDoc(collection(db, collectionName), updatedData);
+            showToast("Запись успешно добавлена!");
+        } else {
+            await updateDoc(doc(db, collectionName, docId), updatedData);
+            showToast("Данные обновлены!");
+        }
         closeEditModal();
         loadAdminData();
     } catch (e) { showToast("Ошибка сохранения: " + e.message, "error"); }
@@ -242,10 +233,7 @@ document.getElementById('admin-logout-btn').addEventListener('click', () => sign
 
 // --- ЛОГИКА ВРАЧА ---
 async function loadDoctorData(uid) {
-    await loadProfile(uid); 
-    await loadPatients(uid); 
-    await loadSchedule(uid); 
-    await loadRequests();
+    await loadProfile(uid); await loadPatients(uid); await loadSchedule(uid); await loadRequests();
 }
 
 document.querySelectorAll('#doctor-section .nav-btn').forEach(btn => {
@@ -290,8 +278,7 @@ document.getElementById('avatar-upload').addEventListener('change', async (e) =>
         const data = await res.json();
         if (data.secure_url) {
             await setDoc(doc(db, "doctors", auth.currentUser.uid), { photoURL: data.secure_url }, { merge: true });
-            document.getElementById('profile-avatar-img').src = data.secure_url; 
-            showToast("Фото загружено");
+            document.getElementById('profile-avatar-img').src = data.secure_url; showToast("Фото загружено");
         }
     } catch (e) { showToast("Ошибка фото", "error"); }
 });
@@ -300,15 +287,12 @@ async function loadPatients(doctorId) {
     currentPatients = [];
     const snap = await getDocs(collection(db, "doctors", doctorId, "patients"));
     snap.forEach(d => currentPatients.push({ id: d.id, ...d.data() }));
-    
-    const tbody = document.getElementById('patients-list'); 
-    tbody.innerHTML = '';
+    const tbody = document.getElementById('patients-list'); tbody.innerHTML = '';
     currentPatients.forEach(p => {
         tbody.innerHTML += `<tr><td>${p.name}</td><td>${p.snils || '-'}</td><td>${p.dob || '-'}</td><td>${p.symptoms}</td>
             <td><span class="action-link" onclick="openPatientModal('${p.id}')">Открыть карту</span>
             <span class="action-link danger" onclick="deletePatient('${p.id}')">Удалить</span></td></tr>`;
     });
-    
     const select = document.getElementById('s-patient');
     select.innerHTML = '<option value="">Выберите пациента</option>';
     currentPatients.forEach(p => { select.innerHTML += `<option value="${p.id}" data-name="${p.name}">${p.name}</option>`; });
@@ -316,19 +300,14 @@ async function loadPatients(doctorId) {
 
 document.getElementById('add-patient-btn').addEventListener('click', async () => {
     await addDoc(collection(db, "doctors", auth.currentUser.uid, "patients"), {
-        name: document.getElementById('d-p-name').value, 
-        snils: document.getElementById('d-p-snils').value,
-        dob: document.getElementById('d-p-dob').value, 
-        symptoms: document.getElementById('d-p-symptoms').value
+        name: document.getElementById('d-p-name').value, snils: document.getElementById('d-p-snils').value,
+        dob: document.getElementById('d-p-dob').value, symptoms: document.getElementById('d-p-symptoms').value
     });
     loadPatients(auth.currentUser.uid); showToast("Добавлено");
 });
 
 window.deletePatient = async (id) => {
-    if(confirm("Удалить пациента?")) { 
-        await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "patients", id)); 
-        loadPatients(auth.currentUser.uid); 
-    }
+    if(confirm("Удалить?")) { await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "patients", id)); loadPatients(auth.currentUser.uid); }
 };
 
 async function loadRequests() {
@@ -351,8 +330,7 @@ document.getElementById('add-schedule-btn').addEventListener('click', async () =
     const sel = document.getElementById('s-patient');
     await addDoc(collection(db, "doctors", auth.currentUser.uid, "schedule"), {
         patientId: sel.value, patientName: sel.options[sel.selectedIndex]?.dataset.name,
-        date: document.getElementById('s-date').value, time: document.getElementById('s-time').value, 
-        reason: document.getElementById('s-reason').value
+        date: document.getElementById('s-date').value, time: document.getElementById('s-time').value, reason: document.getElementById('s-reason').value
     });
     loadSchedule(auth.currentUser.uid); showToast("Записан");
 });
@@ -370,8 +348,7 @@ async function loadSchedule(doctorId) {
 }
 
 window.deleteSchedule = async (id) => {
-    await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "schedule", id)); 
-    loadSchedule(auth.currentUser.uid);
+    await deleteDoc(doc(db, "doctors", auth.currentUser.uid, "schedule", id)); loadSchedule(auth.currentUser.uid);
 };
 
 document.getElementById('doctor-logout-btn').addEventListener('click', () => signOut(auth));
@@ -389,17 +366,12 @@ window.closePatientModal = () => document.getElementById('patient-modal').classL
 
 document.getElementById('generate-prescription-btn').addEventListener('click', async () => {
     const p = currentPatients.find(x => x.id === currentModalPatientId);
-    const btn = document.getElementById('generate-prescription-btn'); 
-    const textarea = document.getElementById('ai-prescription-text');
+    const btn = document.getElementById('generate-prescription-btn'); const textarea = document.getElementById('ai-prescription-text');
     btn.textContent = "Генерация..."; btn.disabled = true; textarea.value = "ИИ анализирует симптомы...";
-    
-    const prompt = `Ты опытный врач. Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения.`;
-
     try {
-        const aiReply = await callAI([{ role: "system", content: "Ты медицинский ассистент." }, { role: "user", content: prompt }]);
+        const aiReply = await callAI([{ role: "system", content: "Ты медицинский ассистент." }, { role: "user", content: `Пациент: ${p.name}, жалобы: ${p.symptoms}. Напиши краткий план лечения.` }]);
         textarea.value = aiReply;
-    } catch (e) { textarea.value = "Ошибка: " + e.message; } 
-    finally { btn.textContent = "Сгенерировать через ИИ"; btn.disabled = false; }
+    } catch (e) { textarea.value = "Ошибка: " + e.message; } finally { btn.textContent = "Сгенерировать через ИИ"; btn.disabled = false; }
 });
 
 document.getElementById('save-prescription-btn').addEventListener('click', async () => {
@@ -411,20 +383,9 @@ document.getElementById('save-prescription-btn').addEventListener('click', async
 // --- ПАЦИЕНТ ---
 document.getElementById('submit-request-btn').addEventListener('click', async () => {
     const user = auth.currentUser; if(!user) return;
-    const req = { 
-        patientId: user.uid, 
-        fullName: document.getElementById('p-fullname').value, 
-        dob: document.getElementById('p-dob').value, 
-        snils: document.getElementById('p-snils').value, 
-        policy: document.getElementById('p-policy').value, 
-        city: document.getElementById('p-city').value, 
-        reason: document.getElementById('p-reason').value, 
-        status: 'pending', doctorId: null 
-    };
+    const req = { patientId: user.uid, fullName: document.getElementById('p-fullname').value, dob: document.getElementById('p-dob').value, snils: document.getElementById('p-snils').value, policy: document.getElementById('p-policy').value, city: document.getElementById('p-city').value, reason: document.getElementById('p-reason').value, status: 'pending', doctorId: null };
     if (!req.fullName || !req.reason) return showToast("Заполните ФИО и причину", "error");
-    await addDoc(collection(db, "requests"), req); 
-    showToast("Заявка отправлена врачу!"); 
-    document.getElementById('p-reason').value = '';
+    await addDoc(collection(db, "requests"), req); showToast("Заявка отправлена врачу!"); document.getElementById('p-reason').value = '';
 });
 
 document.getElementById('patient-logout-btn').addEventListener('click', () => signOut(auth));
@@ -445,106 +406,50 @@ async function loadChatHistory(userId, containerId) {
     }
 }
 
-// Чат Пациента
+// Пациент
 document.getElementById('chat-toggle-btn').onclick = () => document.getElementById('chat-window').classList.toggle('hidden');
 document.getElementById('close-chat-btn').onclick = () => document.getElementById('chat-window').classList.add('hidden');
 document.getElementById('send-msg-btn').onclick = async () => {
-    const input = document.getElementById('chat-input'); 
-    const msgs = document.getElementById('chat-messages'); 
-    const user = auth.currentUser;
+    const input = document.getElementById('chat-input'); const msgs = document.getElementById('chat-messages'); const user = auth.currentUser;
     if(!input.value || !user) return;
-    
-    const text = input.value; 
-    msgs.innerHTML += `<div class="message user-message">${text}</div>`; 
-    input.value = ''; 
-    msgs.innerHTML += `<div class="message bot-message">Анализирую...</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
+    const text = input.value; msgs.innerHTML += `<div class="message user-message">${text}</div>`; input.value = ''; msgs.innerHTML += `<div class="message bot-message">Анализирую...</div>`; msgs.scrollTop = msgs.scrollHeight;
     saveChatMessage(user.uid, text, 'user');
-    
     try {
         const reply = await callAI([{ role: "system", content: "Ты вежливый медицинский ассистент. Подскажи, к какому врачу обратиться." }, { role: "user", content: text }]);
-        msgs.lastChild.remove(); 
-        msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; 
-        msgs.scrollTop = msgs.scrollHeight;
-        saveChatMessage(user.uid, reply, 'bot');
-    } catch(e) { 
-        msgs.lastChild.remove(); 
-        msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`; 
-    }
+        msgs.lastChild.remove(); msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; msgs.scrollTop = msgs.scrollHeight; saveChatMessage(user.uid, reply, 'bot');
+    } catch(e) { msgs.lastChild.remove(); msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`; }
 };
 
-// Чат Врача (С КОНТЕКСТОМ ДАТЫ И БАЗЫ)
+// Врач
 document.getElementById('chat-toggle-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.toggle('hidden');
 document.getElementById('close-chat-btn-doc').onclick = () => document.getElementById('chat-window-doc').classList.add('hidden');
 document.getElementById('send-msg-btn-doc').onclick = async () => {
-    const input = document.getElementById('chat-input-doc'); 
-    const msgs = document.getElementById('chat-messages-doc'); 
-    const user = auth.currentUser;
+    const input = document.getElementById('chat-input-doc'); const msgs = document.getElementById('chat-messages-doc'); const user = auth.currentUser;
     if(!input.value || !user) return;
-    
-    const text = input.value; 
-    msgs.innerHTML += `<div class="message user-message">${text}</div>`; 
-    input.value = ''; 
-    msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
+    const text = input.value; msgs.innerHTML += `<div class="message user-message">${text}</div>`; input.value = ''; msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`; msgs.scrollTop = msgs.scrollHeight;
     saveChatMessage(user.uid, text, 'user');
-    
-    // Получаем сегодняшнюю дату
     const todayDate = new Date().toLocaleDateString('ru-RU');
-
-    let context = `СЕГОДНЯШНЯЯ ДАТА: ${todayDate}\n\n`;
-    context += "--- СПИСОК ПАЦИЕНТОВ ---\n"; 
+    let context = `СЕГОДНЯШНЯЯ ДАТА: ${todayDate}\n\n--- СПИСОК ПАЦИЕНТОВ ---\n`; 
     currentPatients.forEach(p => context += `- ${p.name} (Жалобы: ${p.symptoms})\n`);
-    
     context += "\n--- РАСПИСАНИЕ ПРИЕМОВ ---\n";
     currentSchedule.forEach(s => context += `- Дата: ${s.date}, Время: ${s.time}, Пациент: ${s.patientName}, Причина: ${s.reason}\n`);
-    
-    // Жесткий промпт
-    const sysPrompt = `Ты — умный медицинский ассистент, встроенный в систему врача. 
-    Ты ИМЕЕШЬ ПОЛНЫЙ ДОСТУП к базе данных, которая приведена ниже. 
-    КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать фразами "я не имею доступа", "это конфиденциально" или "я не могу". Ты работаешь внутри защищенного контура.
-    Используй предоставленное расписание и сравнивай даты, чтобы точно ответить на вопрос врача. Если врач спрашивает про "завтра", посмотри на сегодняшнюю дату и найди приемы на следующий день.
-    Отвечай четко, называй ФИО, время и причину визита.
-    
-    Данные из базы:
-    ${context}`;
-    
+    const sysPrompt = `Ты — умный медицинский ассистент, встроенный в систему врача. Ты ИМЕЕШЬ ПОЛНЫЙ ДОСТУП к базе данных. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать фразами "я не имею доступа". Используй расписание и сравнивай даты. Отвечай четко, называй ФИО и время.\nДанные:\n${context}`;
     try {
         const reply = await callAI([{ role: "system", content: sysPrompt }, { role: "user", content: text }]);
-        msgs.lastChild.remove(); 
-        msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; 
-        msgs.scrollTop = msgs.scrollHeight;
-        saveChatMessage(user.uid, reply, 'bot');
-    } catch(e) { 
-        msgs.lastChild.remove(); 
-        msgs.innerHTML += `<div class="message bot-message">Ошибка: ${e.message}</div>`; 
-    }
+        msgs.lastChild.remove(); msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; msgs.scrollTop = msgs.scrollHeight; saveChatMessage(user.uid, reply, 'bot');
+    } catch(e) { msgs.lastChild.remove(); msgs.innerHTML += `<div class="message bot-message">Ошибка: ${e.message}</div>`; }
 };
 
-// Чат Админа
+// Админ
 document.getElementById('chat-toggle-btn-adm').onclick = () => document.getElementById('chat-window-adm').classList.toggle('hidden');
 document.getElementById('close-chat-btn-adm').onclick = () => document.getElementById('chat-window-adm').classList.add('hidden');
 document.getElementById('send-msg-btn-adm').onclick = async () => {
-    const input = document.getElementById('chat-input-adm'); 
-    const msgs = document.getElementById('chat-messages-adm'); 
-    const user = auth.currentUser;
+    const input = document.getElementById('chat-input-adm'); const msgs = document.getElementById('chat-messages-adm'); const user = auth.currentUser;
     if(!input.value || !user) return;
-
-    const text = input.value; 
-    msgs.innerHTML += `<div class="message user-message">${text}</div>`; 
-    input.value = ''; 
-    msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`;
-    msgs.scrollTop = msgs.scrollHeight;
+    const text = input.value; msgs.innerHTML += `<div class="message user-message">${text}</div>`; input.value = ''; msgs.innerHTML += `<div class="message bot-message">Думаю...</div>`; msgs.scrollTop = msgs.scrollHeight;
     saveChatMessage(user.uid, text, 'user');
-
     try {
-        const reply = await callAI([{ role: "system", content: "Ты помощник администратора медицинской системы." }, { role: "user", content: text }]);
-        msgs.lastChild.remove(); 
-        msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; 
-        msgs.scrollTop = msgs.scrollHeight;
-        saveChatMessage(user.uid, reply, 'bot');
-    } catch(e) { 
-        msgs.lastChild.remove(); 
-        msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`; 
-    }
+        const reply = await callAI([{ role: "system", content: "Ты помощник администратора." }, { role: "user", content: text }]);
+        msgs.lastChild.remove(); msgs.innerHTML += `<div class="message bot-message">${reply}</div>`; msgs.scrollTop = msgs.scrollHeight; saveChatMessage(user.uid, reply, 'bot');
+    } catch(e) { msgs.lastChild.remove(); msgs.innerHTML += `<div class="message bot-message">${e.message}</div>`; }
 };
