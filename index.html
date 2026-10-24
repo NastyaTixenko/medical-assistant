@@ -42,17 +42,11 @@
             </div>
         </div>
         
-        <!-- ИИ Чат для пациента -->
         <div class="chat-widget-container">
             <button id="chat-toggle-btn" class="chat-toggle">Чат с ИИ</button>
             <div id="chat-window" class="hidden chat-window">
-                <div class="chat-header">
-                    <span>ИИ Ассистент</span>
-                    <button id="close-chat-btn">&times;</button>
-                </div>
-                <div id="chat-messages" class="chat-messages">
-                    <div class="message bot-message">Здравствуйте! Я помогу вам сориентироваться. Опишите ваши симптомы.</div>
-                </div>
+                <div class="chat-header"><span>ИИ Ассистент</span><button id="close-chat-btn">&times;</button></div>
+                <div id="chat-messages" class="chat-messages"><div class="message bot-message">Здравствуйте! Опишите ваши симптомы.</div></div>
                 <div class="chat-input-area">
                     <input type="text" id="chat-input" placeholder="Задайте вопрос...">
                     <button id="send-msg-btn">Отпр.</button>
@@ -73,7 +67,6 @@
             </nav>
         </aside>
         <main class="main-content">
-            <!-- Вкладка: Пациенты -->
             <section id="view-patients" class="view-section active-view">
                 <div class="section-header"><h2>База пациентов</h2></div>
                 <div class="table-container">
@@ -94,7 +87,6 @@
                 </div>
             </section>
 
-            <!-- Вкладка: Расписание -->
             <section id="view-schedule" class="view-section">
                 <div class="section-header"><h2>Расписание приемов</h2></div>
                 <div class="table-container">
@@ -115,9 +107,8 @@
                 </div>
             </section>
 
-            <!-- Вкладка: Заявки -->
             <section id="view-requests" class="view-section">
-                <div class="section-header"><h2>Новые заявки от пациентов</h2></div>
+                <div class="section-header"><h2>Новые заявки</h2></div>
                 <div class="table-container">
                     <table id="requests-table">
                         <thead><tr><th>ФИО</th><th>Дата рожд.</th><th>СНИЛС</th><th>Город</th><th>Причина</th><th>Действия</th></tr></thead>
@@ -126,7 +117,6 @@
                 </div>
             </section>
 
-            <!-- Вкладка: Профиль -->
             <section id="view-profile" class="view-section">
                 <div class="section-header"><h2>Профиль врача</h2></div>
                 <div class="profile-layout">
@@ -138,79 +128,84 @@
                     </div>
                     <div class="profile-form-card">
                         <div class="form-group"><label>ФИО</label><input type="text" id="d-fullname"></div>
-                        <div class="form-group"><label>Номер телефона</label><input type="tel" id="d-phone"></div>
-                        <div class="form-group"><label>Стаж работы</label><input type="text" id="d-experience"></div>
-                        <button id="save-profile-btn" class="btn btn-primary">Сохранить изменения</button>
-                        <button id="doctor-logout-btn" class="btn btn-danger">Выйти из аккаунта</button>
+                        <div class="form-group"><label>Телефон</label><input type="tel" id="d-phone"></div>
+                        <div class="form-group"><label>Стаж</label><input type="text" id="d-experience"></div>
+                        <button id="save-profile-btn" class="btn btn-primary">Сохранить</button>
+                        <button id="doctor-logout-btn" class="btn btn-danger">Выйти</button>
                     </div>
                 </div>
             </section>
         </main>
-
-        <!-- Чат-ассистент для врача -->
         <div class="chat-widget-container">
             <button id="chat-toggle-btn-doc" class="chat-toggle">Чат с ИИ</button>
             <div id="chat-window-doc" class="hidden chat-window">
                 <div class="chat-header"><span>ИИ Ассистент</span><button id="close-chat-btn-doc">&times;</button></div>
-                <div id="chat-messages-doc" class="chat-messages">
-                    <div class="message bot-message">Здравствуйте, доктор. Я помогу с расписанием и пациентами.</div>
-                </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input-doc" placeholder="Задайте вопрос...">
-                    <button id="send-msg-btn-doc">Отпр.</button>
-                </div>
+                <div id="chat-messages-doc" class="chat-messages"><div class="message bot-message">Здравствуйте, доктор.</div></div>
+                <div class="chat-input-area"><input type="text" id="chat-input-doc" placeholder="Задайте вопрос..."><button id="send-msg-btn-doc">Отпр.</button></div>
             </div>
         </div>
     </div>
 
-    <!-- ЭКРАН АДМИНА -->
+    <!-- ЭКРАН АДМИНА (Полный доступ к БД) -->
     <div id="admin-section" class="app-layout" style="display: none;">
         <aside class="sidebar">
             <div class="sidebar-header"><h2>Панель Админа</h2></div>
             <nav class="sidebar-nav">
-                <button class="nav-btn active" data-target="admin-view-users">Пользователи</button>
-                <button class="nav-btn" data-target="admin-view-requests">Все заявки</button>
+                <button class="nav-btn active" data-target="admin-view-users">Таблица: users</button>
+                <button class="nav-btn" data-target="admin-view-requests">Таблица: requests</button>
+                <button class="nav-btn" data-target="admin-view-doctors">Таблица: doctors</button>
             </nav>
         </aside>
         <main class="main-content">
             <section id="admin-view-users" class="view-section active-view">
-                <div class="section-header"><h2>Все пользователи системы</h2></div>
+                <div class="section-header"><h2>Все пользователи (users)</h2></div>
                 <div class="table-container">
                     <table>
-                        <thead><tr><th>Email</th><th>Роль</th><th>ФИО (если есть)</th><th>Действия</th></tr></thead>
+                        <thead><tr><th>ID</th><th>Email</th><th>Роль</th><th>Действия</th></tr></thead>
                         <tbody id="admin-users-list"></tbody>
                     </table>
                 </div>
-                <button id="admin-logout-btn" class="btn btn-danger mt-10">Выйти из аккаунта</button>
             </section>
+            
             <section id="admin-view-requests" class="view-section">
-                <div class="section-header"><h2>Все заявки на прием</h2></div>
+                <div class="section-header"><h2>Все заявки (requests)</h2></div>
                 <div class="table-container">
                     <table>
-                        <thead><tr><th>Пациент</th><th>Причина</th><th>Статус</th></tr></thead>
+                        <thead><tr><th>ID</th><th>ФИО</th><th>Причина</th><th>Статус</th><th>Действия</th></tr></thead>
                         <tbody id="admin-requests-list"></tbody>
                     </table>
                 </div>
             </section>
-        </main>
 
-        <!-- Чат-ассистент для админа -->
-        <div class="chat-widget-container">
-            <button id="chat-toggle-btn-adm" class="chat-toggle">Чат с ИИ</button>
-            <div id="chat-window-adm" class="hidden chat-window">
-                <div class="chat-header"><span>ИИ Ассистент</span><button id="close-chat-btn-adm">&times;</button></div>
-                <div id="chat-messages-adm" class="chat-messages">
-                    <div class="message bot-message">Здравствуйте, администратор. Чем помочь?</div>
+            <section id="admin-view-doctors" class="view-section">
+                <div class="section-header"><h2>Профили врачей (doctors)</h2></div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Стаж</th><th>Действия</th></tr></thead>
+                        <tbody id="admin-doctors-list"></tbody>
+                    </table>
                 </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input-adm" placeholder="Задайте вопрос...">
-                    <button id="send-msg-btn-adm">Отпр.</button>
-                </div>
+            </section>
+            
+            <button id="admin-logout-btn" class="btn btn-danger mt-10">Выйти из аккаунта</button>
+        </main>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ (Админ) -->
+    <div id="edit-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Редактирование записи</h3>
+                <button class="close-modal-btn" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="edit-form-fields"></div>
+                <button id="save-edit-btn" class="btn btn-primary mt-10" style="width: 100%;">Сохранить изменения</button>
             </div>
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО КАРТЫ ПАЦИЕНТА (Для врача) -->
+    <!-- МОДАЛЬНОЕ ОКНО КАРТЫ ПАЦИЕНТА (Врач) -->
     <div id="patient-modal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
@@ -219,10 +214,9 @@
             </div>
             <div class="modal-body">
                 <p><strong>Жалобы:</strong> <span id="modal-patient-symptoms"></span></p>
-                
                 <div class="ai-prescription-box">
                     <h4>Назначение врача (ИИ)</h4>
-                    <textarea id="ai-prescription-text" placeholder="Нажмите кнопку ниже, чтобы сгенерировать план лечения..."></textarea>
+                    <textarea id="ai-prescription-text" placeholder="Нажмите кнопку ниже..."></textarea>
                     <div style="display:flex; gap: 10px; margin-top: 10px;">
                         <button id="generate-prescription-btn" class="btn btn-primary">Сгенерировать через ИИ</button>
                         <button id="save-prescription-btn" class="btn btn-secondary">Сохранить в карту</button>
@@ -232,9 +226,7 @@
         </div>
     </div>
 
-    <!-- Уведомления -->
     <div id="toast-container"></div>
-
     <script type="module" src="app.js"></script>
 </body>
 </html>
